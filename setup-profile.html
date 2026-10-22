@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101827">
+    <title>Create your profile — Friends4Ever</title>
+    <link rel="icon" type="image/png" href="./images/icons/logo.png">
+    <script>
+        try {
+            const theme = localStorage.getItem("friends4ever-theme");
+            if (theme === "light" || theme === "dark") {
+                document.documentElement.dataset.theme = theme;
+            }
+        } catch {
+            // Use the default theme when browser storage is unavailable.
+        }
+    </script>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body class="auth-page auth-setup">
+    <main class="app-shell auth-shell">
+        <header class="topbar auth-topbar">
+            <a class="brand" href="./index.html">
+                <img class="brand-icon" src="./images/icons/logo.png" alt="">
+                <span>Friends<span class="brand-accent">4Ever</span></span>
+            </a>
+        </header>
+
+        <section class="screen auth-screen">
+            <div class="welcome-card auth-card">
+                <div class="hero-icon" aria-hidden="true"><span>✦</span></div>
+                <p class="eyebrow">ONE LAST STEP</p>
+                <h1>Create your profile</h1>
+                <p class="muted">
+                    Choose the name people will see on Friends4Ever.
+                    It doesn't have to match your Google account.
+                </p>
+
+                <form id="setup-form" class="profile-form" hidden>
+                    <label for="display-name">Your display name</label>
+                    <input
+                        id="display-name"
+                        type="text"
+                        maxlength="40"
+                        autocomplete="nickname"
+                        placeholder="Enter any name you like"
+                        required
+                    >
+                    <p class="field-hint">Use any non-empty name, up to 40 characters.</p>
+                    <button id="create-account-button" class="primary-button" type="submit">
+                        Create account
+                    </button>
+                    <p id="setup-error" class="error-message" role="alert"></p>
+                </form>
+            </div>
+        </section>
+
+        <footer class="footer">Friends4Ever · Made for friendship</footer>
+    </main>
+
+    <script type="module" src="./js/setup-profile.js"></script>
+</body>
+</html>

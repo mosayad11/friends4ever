@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101827">
+    <meta name="description" content="Friends4Ever — Stay connected with your friends.">
+    <title>Friends4Ever — Chat</title>
+    <link rel="icon" type="image/png" href="./images/icons/logo.png">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<!-- Custom Modal System -->
+<div id="custom-modal-overlay" class="custom-modal-overlay" aria-hidden="true">
+    <div
+        id="custom-modal"
+        class="custom-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="custom-modal-title"
+    >
+        <div class="custom-modal-icon" id="custom-modal-icon">
+            <span>✦</span>
+        </div>
+
+        <h2 id="custom-modal-title">Edit Message</h2>
+
+        <p id="custom-modal-description">
+            Make your changes below.
+        </p>
+
+        <div id="custom-modal-content" class="custom-modal-content"></div>
+
+        <p id="custom-modal-error" class="custom-modal-error" hidden></p>
+
+        <div id="custom-modal-actions" class="custom-modal-actions"></div>
+    </div>
+</div>
+
+<body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="ambient ambient-three" aria-hidden="true"></div>
+
+    <main class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="./index.html" aria-label="Friends 4 ever home">
+                <img class="brand-logo" src="./images/icons/logo.png" alt="Friends4Ever">
+            </a>
+
+            <div class="topbar-actions">
+                <span id="connection-status" class="connection-status">
+                    <span class="status-dot"></span>
+                    Connecting
+                </span>
+                <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch theme" title="Switch theme">
+                    <span id="theme-icon" aria-hidden="true">☀</span>
+                </button>
+                <button id="logout-button" class="logout-button" type="button">Sign out</button>
+            </div>
+        </header>
+
+        <section id="home-loading" class="loading-panel glass-panel">
+            <div class="loading-orbit" aria-hidden="true"><span></span></div>
+            <h1>Getting your space ready</h1>
+            <p class="muted">Connecting you with your friends…</p>
+        </section>
+
+        <section id="home-screen" class="workspace" hidden>
+            <aside class="sidebar glass-panel">
+                <div class="self-card">
+                    <div class="self-avatar-wrap">
+                        <img id="user-photo" class="avatar" alt="" hidden>
+                        <div id="avatar-fallback" class="avatar avatar-fallback" hidden>F</div>
+                        <span class="online-indicator" title="Signed in"></span>
+                    </div>
+                    <div class="self-info">
+                        <span class="eyebrow">YOUR SPACE</span>
+                        <h1 id="user-name">Friend</h1>
+                        <p id="user-email" class="muted user-email"></p>
+                    </div>
+                    <button id="profile-menu-button" class="subtle-icon-button" type="button" aria-label="Edit display name" title="Edit display name">✎</button>
+                </div>
+
+                <div id="profile-editor" class="profile-editor" hidden>
+                    <form id="profile-edit-form" class="profile-form">
+                        <label for="edit-display-name">Your display name</label>
+                        <input id="edit-display-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Choose a name" required>
+                        <p class="field-hint">Up to 40 characters. This is the name people see.</p>
+                        <button id="update-profile-button" class="primary-button" type="submit">Save name</button>
+                        <p id="edit-error" class="message-error" role="alert" hidden></p>
+                        <p id="edit-success" class="message-success" role="status" hidden></p>
+                    </form>
+                </div>
+
+                <div class="sidebar-section search-section">
+                    <div class="section-heading">
+                        <h2>Find people</h2>
+                        <span class="section-symbol" aria-hidden="true">⌕</span>
+                    </div>
+                    <label class="search-box" for="user-search">
+                        <span aria-hidden="true">⌕</span>
+                        <input id="user-search" type="search" placeholder="Search by display name…" autocomplete="off">
+                        <button id="clear-search" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
+                    </label>
+                    <p id="search-hint" class="tiny-muted">Type a name to find friends.</p>
+                    <div id="search-results" class="search-results" aria-live="polite"></div>
+                </div>
+
+                <div class="sidebar-section conversations-section">
+                    <div class="section-heading">
+                        <h2>Your conversations</h2>
+                        <span id="conversation-count" class="count-pill">0</span>
+                    </div>
+                    <p id="conversations-empty" class="empty-note">Your chats will appear here. Find someone above to start a conversation.</p>
+                    <div id="conversation-list" class="conversation-list"></div>
+                </div>
+
+                <div class="sidebar-footer">
+                    <span class="footer-pulse"></span>
+                    <span>Made for friendship</span>
+                    <span class="footer-divider">·</span>
+                    <span>Friends<span class="mini-four">4</span>ever</span>
+                </div>
+            </aside>
+
+            <section class="chat-panel glass-panel" aria-label="Chat">
+                <div id="chat-placeholder" class="chat-placeholder">
+                    <div class="placeholder-art" aria-hidden="true">
+                        <div class="placeholder-orbit orbit-a"></div>
+                        <div class="placeholder-orbit orbit-b"></div>
+                        <div class="placeholder-chat-icon">✉</div>
+                        <span class="float-dot dot-a"></span>
+                        <span class="float-dot dot-b"></span>
+                        <span class="float-dot dot-c"></span>
+                    </div>
+                    <span class="eyebrow">YOUR PEOPLE, YOUR PLACE</span>
+                    <h2>Good conversations<br><span>start here.</span></h2>
+                    <p class="muted">Search for a friend or open one of your conversations. Your chats stay in your list, ready whenever you need them.</p>
+                    <div class="placeholder-tip"><span>✦</span> Pick a person to say hello</div>
+                </div>
+
+                <div id="active-chat" class="active-chat" hidden>
+                    <header class="chat-header">
+                        <button id="back-to-list" class="icon-button mobile-back" type="button" aria-label="Back to conversations">←</button>
+                        <div class="chat-person-avatar">
+                            <img id="chat-user-photo" alt="" hidden>
+                            <span id="chat-user-fallback">F</span>
+                            <span class="chat-online-indicator"></span>
+                        </div>
+                        <div class="chat-person-info">
+                            <h2 id="chat-user-name">Friend</h2>
+                            <p id="chat-subtitle">Private conversation</p>
+                        </div>
+                        <span class="private-badge"><span>●</span> Private chat</span>
+                    </header>
+
+                    <div id="messages-list" class="messages-list" aria-live="polite">
+                        <div class="message-loading">Loading messages…</div>
+                    </div>
+
+                    <div id="chat-error" class="chat-error" role="alert" hidden></div>
+
+                    <form id="message-form" class="message-composer">
+                        <label for="message-input" class="sr-only">Write a message</label>
+                        <textarea id="message-input" rows="1" maxlength="4000" placeholder="Write a message…" autocomplete="off" required></textarea>
+                        <span class="composer-hint">Enter to send · Shift + Enter for a new line</span>
+                        <button id="send-message-button" class="send-button" type="submit" aria-label="Send message" title="Send message">
+                            <span>Send</span><span aria-hidden="true">↗</span>
+                        </button>
+                    </form>
+                </div>
+            </section>
+        </section>
+
+        <p id="home-error" class="global-error" role="alert" hidden></p>
+        <footer class="page-footer">Friends <span class="footer-four">4</span> ever <span class="footer-separator">/</span> a little closer, every day.</footer>
+    </main>
+
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>

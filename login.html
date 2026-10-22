@@ -1,0 +1,54 @@
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101827">
+    <title>Sign in — Friends4Ever</title>
+    <link rel="icon" type="image/png" href="./images/icons/logo.png">
+    <script>
+        try {
+            const theme = localStorage.getItem("friends4ever-theme");
+            if (theme === "light" || theme === "dark") {
+                document.documentElement.dataset.theme = theme;
+            }
+        } catch {
+            // Use the default theme when browser storage is unavailable.
+        }
+    </script>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body class="auth-page auth-login">
+    <main class="app-shell auth-shell">
+        <header class="topbar auth-topbar">
+            <a class="brand" href="./index.html">
+                <img class="brand-icon" src="./images/icons/logo.png" alt="">
+                <span>Friends<span class="brand-accent"> 4 </span>Ever</span>
+            </a>
+        </header>
+
+        <section class="screen auth-screen">
+            <div class="welcome-card auth-card">
+                <div class="hero-icon" aria-hidden="true"><span>✦</span></div>
+                <p class="eyebrow">ALWAYS. FRIENDS.</p>
+                <h1>Forever connected.</h1>
+                <p class="muted">
+                    Sign in to find your friends and start chatting.
+                </p>
+
+                <button id="login-button" class="primary-button" type="button">
+                    <span class="google-icon" aria-hidden="true">G</span>
+                    Continue with Google
+                </button>
+
+                <p id="auth-error" class="error-message" role="alert"></p>
+            </div>
+        </section>
+
+        <footer class="footer">Friends4ever · Made for you</footer>
+    </main>
+
+    <script type="module" src="./js/login.js"></script>
+</body>
+</html>

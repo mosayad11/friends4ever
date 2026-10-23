@@ -7,6 +7,16 @@
     <meta name="description" content="Friends4Ever — Stay connected with your friends.">
     <title>Friends4Ever — Chat</title>
     <link rel="icon" type="image/png" href="./images/icons/logo.png">
+    <script>
+        try {
+            const theme = localStorage.getItem("friends4ever-theme");
+            if (["dark", "light", "ocean", "sunset"].includes(theme)) {
+                document.documentElement.dataset.theme = theme;
+            }
+        } catch {
+            // Use the default theme when browser storage is unavailable.
+        }
+    </script>
     <link rel="stylesheet" href="./css/style.css">
 </head>
 
@@ -46,6 +56,11 @@
         <header class="topbar">
             <a class="brand" href="./index.html" aria-label="Friends 4 ever home">
                 <img class="brand-logo" src="./images/icons/logo.png" alt="Friends4Ever">
+                <span class="brand-name">
+                    <span class="brand-word brand-friends">Friends</span>
+                    <span class="brand-four-text">4</span>
+                    <span class="brand-word brand-ever">Ever</span>
+                </span>
             </a>
 
             <div class="topbar-actions">
@@ -53,12 +68,73 @@
                     <span class="status-dot"></span>
                     Connecting
                 </span>
-                <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch theme" title="Switch theme">
-                    <span id="theme-icon" aria-hidden="true">☀</span>
+                <button id="settings-toggle" class="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">
+                    <span aria-hidden="true">⚙</span>
+                    Settings
                 </button>
-                <button id="logout-button" class="logout-button" type="button">Sign out</button>
+            </div>
+
+            <div class="profile-count" aria-live="polite">
+                <span id="profile-count-value">--</span>
+                <span>users</span>
             </div>
         </header>
+
+        <section id="settings-panel" class="settings-panel glass-panel" hidden>
+            <div class="settings-heading">
+                <div>
+                    <span class="eyebrow">YOUR CONTROLS</span>
+                    <h2>Settings</h2>
+                </div>
+                <button id="settings-close" class="subtle-icon-button" type="button" aria-label="Close settings">×</button>
+            </div>
+
+            <div class="settings-grid">
+                <section class="settings-section search-section">
+                    <div class="section-heading">
+                        <h3>Find people</h3>
+                        <span class="section-symbol" aria-hidden="true">⌕</span>
+                    </div>
+                    <label class="search-box" for="user-search">
+                        <span aria-hidden="true">⌕</span>
+                        <input id="user-search" type="search" placeholder="Search by display name…" autocomplete="off">
+                        <button id="clear-search" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
+                    </label>
+                    <p id="search-hint" class="tiny-muted">Type a name to find friends.</p>
+                    <div id="search-results" class="search-results" aria-live="polite"></div>
+                </section>
+
+                <section class="settings-section">
+                    <div class="section-heading">
+                        <h3>Appearance</h3>
+                        <span class="section-symbol" aria-hidden="true">◐</span>
+                    </div>
+                    <div id="theme-options" class="theme-options" aria-label="Choose a theme">
+                        <button class="theme-option" type="button" data-theme-choice="dark"><span class="theme-swatch theme-swatch-dark"></span>Night</button>
+                        <button class="theme-option" type="button" data-theme-choice="light"><span class="theme-swatch theme-swatch-light"></span>Sky</button>
+                        <button class="theme-option" type="button" data-theme-choice="ocean"><span class="theme-swatch theme-swatch-ocean"></span>Ocean</button>
+                        <button class="theme-option" type="button" data-theme-choice="sunset"><span class="theme-swatch theme-swatch-sunset"></span>Sunset</button>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <div class="section-heading">
+                        <h3>Profile</h3>
+                        <span class="section-symbol" aria-hidden="true">✎</span>
+                    </div>
+                    <form id="profile-edit-form" class="profile-form">
+                        <label for="edit-display-name">Your display name</label>
+                        <input id="edit-display-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Choose a name" required>
+                        <p class="field-hint">Up to 40 characters. This is the name people see.</p>
+                        <button id="update-profile-button" class="primary-button" type="submit">Save name</button>
+                        <p id="edit-error" class="message-error" role="alert" hidden></p>
+                        <p id="edit-success" class="message-success" role="status" hidden></p>
+                    </form>
+                </section>
+            </div>
+
+            <button id="logout-button" class="logout-button settings-logout" type="button">Sign out</button>
+        </section>
 
         <section id="home-loading" class="loading-panel glass-panel">
             <div class="loading-orbit" aria-hidden="true"><span></span></div>
@@ -79,32 +155,6 @@
                         <h1 id="user-name">Friend</h1>
                         <p id="user-email" class="muted user-email"></p>
                     </div>
-                    <button id="profile-menu-button" class="subtle-icon-button" type="button" aria-label="Edit display name" title="Edit display name">✎</button>
-                </div>
-
-                <div id="profile-editor" class="profile-editor" hidden>
-                    <form id="profile-edit-form" class="profile-form">
-                        <label for="edit-display-name">Your display name</label>
-                        <input id="edit-display-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Choose a name" required>
-                        <p class="field-hint">Up to 40 characters. This is the name people see.</p>
-                        <button id="update-profile-button" class="primary-button" type="submit">Save name</button>
-                        <p id="edit-error" class="message-error" role="alert" hidden></p>
-                        <p id="edit-success" class="message-success" role="status" hidden></p>
-                    </form>
-                </div>
-
-                <div class="sidebar-section search-section">
-                    <div class="section-heading">
-                        <h2>Find people</h2>
-                        <span class="section-symbol" aria-hidden="true">⌕</span>
-                    </div>
-                    <label class="search-box" for="user-search">
-                        <span aria-hidden="true">⌕</span>
-                        <input id="user-search" type="search" placeholder="Search by display name…" autocomplete="off">
-                        <button id="clear-search" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
-                    </label>
-                    <p id="search-hint" class="tiny-muted">Type a name to find friends.</p>
-                    <div id="search-results" class="search-results" aria-live="polite"></div>
                 </div>
 
                 <div class="sidebar-section conversations-section">

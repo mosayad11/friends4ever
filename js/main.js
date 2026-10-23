@@ -13,6 +13,7 @@ import {
     doc,
     getDoc,
     getDocs,
+    getCountFromServer,
     query,
     where,
     orderBy,
@@ -61,6 +62,13 @@ const logoutButton = $("logout-button");
 const homeError = $("home-error");
 const connectionStatus = $("connection-status");
 
+const settingsToggle = $("settings-toggle");
+const settingsPanel = $("settings-panel");
+const settingsClose = $("settings-close");
+const themeOptions = document.querySelectorAll("[data-theme-choice]");
+const chatPanel = document.querySelector(".chat-panel");
+const profileCountValue = $("profile-count-value");
+
 const themeToggle = $("theme-toggle");
 const themeIcon = $("theme-icon");
 
@@ -88,6 +96,8 @@ const backToListButton = $("back-to-list");
 
 const chatHeader = document.querySelector(".chat-header");
 
+chatPanel?.prepend(settingsPanel);
+
 const requestPanel = document.createElement("section");
 requestPanel.className = "chat-request-panel";
 requestPanel.hidden = true;
@@ -109,6 +119,7 @@ let activeChatData = null;
 let activeChatPartner = null;
 let messageCache = [];
 let searchGeneration = 0;
+const visibleLastMessageByChat = new Map();
 
 const readResetInProgress = new Set();
 let receivedMessageIds = new Set();
@@ -699,7 +710,9 @@ const THEME_KEY = "friends4ever-theme";
 function readStoredTheme() {
     try {
         const stored = localStorage.getItem(THEME_KEY);
-        return stored === "light" || stored === "dark" ? stored : "dark";
+        return ["dark", "light", "ocean", "sunset"].includes(stored)
+            ? stored
+            : "dark";
     } catch {
         return "dark";
     }
@@ -714,9 +727,17 @@ function persistTheme(theme) {
 }
 
 function applyTheme(theme) {
-    const selected = theme === "light" ? "light" : "dark";
+    const supportedThemes = ["dark", "light", "ocean", "sunset"];
+    const selected = supportedThemes.includes(theme) ? theme : "dark";
 
     document.documentElement.dataset.theme = selected;
+
+    themeOptions.forEach((option) => {
+        option.classList.toggle(
+            "is-selected",
+            option.dataset.themeChoice === selected
+        );
+    });
 
     if (themeIcon) {
         themeIcon.textContent = selected === "dark" ? "☀" : "☾";
@@ -740,7 +761,11 @@ function applyTheme(theme) {
     if (themeColor) {
         themeColor.content = selected === "dark"
             ? "#101827"
-            : "#f2f5fc";
+            : selected === "sunset"
+                ? "#2b1723"
+                : selected === "ocean"
+                    ? "#062a3a"
+                    : "#f2f5fc";
     }
 }
 
@@ -754,6 +779,59 @@ themeToggle?.addEventListener("click", () => {
 
     applyTheme(next);
     persistTheme(next);
+});
+
+function setSettingsOpen(open) {
+    if (!settingsPanel || !settingsToggle) return;
+
+    settingsPanel.hidden = !open;
+    settingsToggle.setAttribute("aria-expanded", String(open));
+
+    if (open && window.matchMedia("(max-width: 760px)").matches) {
+        setWorkspaceVisible(true);
+    } else if (
+        !open &&
+        !activeChatId &&
+        window.matchMedia("(max-width: 760px)").matches
+    ) {
+        setWorkspaceVisible(false);
+    }
+}
+
+settingsToggle?.addEventListener("click", () => {
+    setSettingsOpen(settingsPanel.hidden);
+});
+
+settingsClose?.addEventListener("click", () => {
+    setSettingsOpen(false);
+});
+
+themeOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+        const selected = option.dataset.themeChoice;
+        applyTheme(selected);
+        persistTheme(selected);
+    });
+});
+
+document.addEventListener("click", (event) => {
+    if (
+        settingsPanel &&
+        !settingsPanel.hidden &&
+        !event.target.closest("#settings-panel, #settings-toggle")
+    ) {
+        setSettingsOpen(false);
+    }
+
+    if (!event.target.closest(".message-row")) {
+        document
+            .querySelectorAll(".message-row.actions-visible")
+            .forEach((row) => {
+                row.classList.remove("actions-visible");
+                const actions = row.querySelector(".message-actions");
+                if (actions) actions.style.display = "none";
+            });
+    }
 });
 
 
@@ -1192,7 +1270,10 @@ function renderConversationList() {
 
         const preview = document.createElement("small");
 
-        let lastMessage = chat.lastMessage || "Start the conversation";
+        const visibleLastMessage = visibleLastMessageByChat.get(record.id);
+        let lastMessage = visibleLastMessage?.text ||
+            chat.lastMessage ||
+            "Start the conversation";
 
         if (chat.requestStatus === "pending") {
             lastMessage = chat.requestedBy === currentUser?.uid
@@ -1203,7 +1284,9 @@ function renderConversationList() {
         }
 
         preview.textContent =
-            chat.lastSenderId === currentUser?.uid && chat.lastMessage
+            visibleLastMessage?.senderId === currentUser?.uid
+                ? `You: ${lastMessage}`
+                : chat.lastSenderId === currentUser?.uid && chat.lastMessage
                 ? `You: ${lastMessage}`
                 : lastMessage;
 
@@ -1214,7 +1297,9 @@ function renderConversationList() {
 
         const time = document.createElement("span");
         time.textContent = formatConversationTime(
-            chat.updatedAt || chat.lastMessageAt
+            visibleLastMessage?.createdAt ||
+            chat.updatedAt ||
+            chat.lastMessageAt
         );
 
         meta.append(time);
@@ -1248,6 +1333,58 @@ function renderConversationList() {
     }
 }
 
+async function refreshVisibleLastMessage(chatId) {
+    if (!currentUser || !chatId) return;
+
+    try {
+        const messagesQuery = query(
+            collection(db, "chats", chatId, "messages"),
+            orderBy("createdAt", "desc")
+        );
+
+        const snapshot = await getDocs(messagesQuery);
+        const visibleMessage = snapshot.docs
+            .map((item) => ({
+                id: item.id,
+                ...item.data()
+            }))
+            .find((message) =>
+                !(message.deletedFor || []).includes(currentUser.uid)
+            );
+
+        if (visibleMessage) {
+            visibleLastMessageByChat.set(chatId, {
+                text: visibleMessage.deletedForEveryone
+                    ? "This message was deleted."
+                    : (visibleMessage.text || ""),
+                senderId: visibleMessage.senderId,
+                createdAt: visibleMessage.createdAt
+            });
+        } else {
+            visibleLastMessageByChat.delete(chatId);
+        }
+
+        if (activeChatId === chatId) {
+            activeChatData = {
+                ...activeChatData,
+                lastMessage: visibleLastMessage?.text || "",
+                lastSenderId: visibleLastMessage?.senderId || null,
+                lastMessageAt: visibleLastMessage?.createdAt || null
+            };
+        }
+
+        renderConversationList();
+    } catch (error) {
+        console.warn("Could not refresh conversation preview:", error);
+    }
+}
+
+async function refreshAllVisibleLastMessages() {
+    await Promise.all(
+        chatRecords.map((record) => refreshVisibleLastMessage(record.id))
+    );
+}
+
 function subscribeToConversations() {
     unsubscribeChats?.();
 
@@ -1266,6 +1403,7 @@ function subscribeToConversations() {
             }));
 
             renderConversationList();
+            void refreshAllVisibleLastMessages();
 
             if (activeChatId) {
                 const current = chatRecords.find(
@@ -1915,6 +2053,7 @@ function subscribeToMessages(chatId) {
 
             void markIncomingMessagesAsRead(messageCache, chatId);
             renderMessages();
+            void refreshVisibleLastMessage(chatId);
 
             if (newIncomingMessage) {
                 playSound("receive");
@@ -2002,6 +2141,36 @@ function renderMessages() {
 
         const bubble = document.createElement("div");
         bubble.className = "message-bubble";
+        bubble.tabIndex = 0;
+        bubble.setAttribute("role", "button");
+        bubble.setAttribute("aria-label", "Show message actions");
+
+        const showActions = () => {
+            document
+                .querySelectorAll(".message-row.actions-visible")
+                .forEach((item) => {
+                    item.classList.remove("actions-visible");
+                    const actions = item.querySelector(".message-actions");
+                    if (actions) actions.style.display = "none";
+                });
+
+            row.classList.add("actions-visible");
+            const actions = row.querySelector(".message-actions");
+            if (actions) actions.style.display = "flex";
+        };
+
+        row.addEventListener("click", (event) => {
+            if (!event.target.closest(".message-actions")) {
+                showActions();
+            }
+        });
+
+        bubble.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                showActions();
+            }
+        });
 
         bubble.textContent = message.deletedForEveryone
             ? "This message was deleted."
@@ -2018,7 +2187,7 @@ function renderMessages() {
         const meta = document.createElement("div");
         meta.className = "message-meta";
 
-        if (message.senderId === currentUser?.uid) {
+        if (!message.deletedForEveryone && message.senderId === currentUser?.uid) {
             const readBy = message.readBy || [];
 
             const recipientUid = (activeChatData?.participants || [])
@@ -2039,13 +2208,13 @@ function renderMessages() {
             meta.appendChild(receipt);
         }
 
-        const time = document.createElement("time");
-        time.className = "message-time";
-        time.textContent = formatTime(message.createdAt);
-
-        meta.append(time);
-
         if (!message.deletedForEveryone) {
+            const time = document.createElement("time");
+            time.className = "message-time";
+            time.textContent = formatTime(message.createdAt);
+
+            meta.append(time);
+
             const actions = document.createElement("div");
             actions.className = "message-actions";
 
@@ -2071,7 +2240,12 @@ function renderMessages() {
             meta.append(actions);
         }
 
-        row.append(bubble, meta);
+        row.append(bubble);
+
+        if (!message.deletedForEveryone) {
+            row.append(meta);
+        }
+
         messagesList.append(row);
     }
 
@@ -2230,17 +2404,6 @@ function autoResizeMessageInput() {
 
 messageInput?.addEventListener("input", autoResizeMessageInput);
 
-messageInput?.addEventListener("keydown", (event) => {
-    if (
-        event.key === "Enter" &&
-        !event.shiftKey &&
-        !event.isComposing
-    ) {
-        event.preventDefault();
-        messageForm.requestSubmit();
-    }
-});
-
 
 /* =========================================================
    BACK TO CONVERSATION LIST
@@ -2291,6 +2454,7 @@ watchAuthState(async (user) => {
 
         renderProfile(user, profile);
         subscribeToConversations();
+        void loadProfileCount();
 
         setConnectionState("Connected", true);
     } catch (error) {
@@ -2338,3 +2502,18 @@ logoutButton?.addEventListener("click", async () => {
         logoutButton.disabled = false;
     }
 });
+
+async function loadProfileCount() {
+    if (!profileCountValue) return;
+
+    try {
+        const snapshot = await getCountFromServer(
+            collection(db, "users")
+        );
+
+        profileCountValue.textContent = snapshot.data().count.toLocaleString();
+    } catch (error) {
+        console.warn("Could not load profile count:", error);
+        profileCountValue.textContent = "--";
+    }
+}

@@ -10,7 +10,7 @@
     <script>
         try {
             const theme = localStorage.getItem("friends4ever-theme");
-            if (theme === "light" || theme === "dark") {
+            if (["dark", "light", "ocean", "sunset"].includes(theme)) {
                 document.documentElement.dataset.theme = theme;
             }
         } catch {
@@ -24,7 +24,11 @@
         <header class="topbar auth-topbar">
             <a class="brand" href="./index.html">
                 <img class="brand-icon" src="./images/icons/logo.png" alt="">
-                <span>Friends<span class="brand-accent">4Ever</span></span>
+                <span class="brand-name">
+                    <span class="brand-word brand-friends">Friends</span>
+                    <span class="brand-four-text">4</span>
+                    <span class="brand-word brand-ever">Ever</span>
+                </span>
             </a>
         </header>
 

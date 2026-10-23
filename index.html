@@ -212,9 +212,18 @@
                     <div id="chat-error" class="chat-error" role="alert" hidden></div>
 
                     <form id="message-form" class="message-composer">
+                        <div id="reply-preview" class="reply-preview" hidden>
+                            <div>
+                                <strong id="reply-preview-label">Replying to</strong>
+                                <span id="reply-preview-text"></span>
+                            </div>
+                            <button id="cancel-reply" type="button" aria-label="Cancel reply">×</button>
+                        </div>
+                        <div id="emoji-picker" class="emoji-picker" hidden></div>
                         <label for="message-input" class="sr-only">Write a message</label>
+                        <button id="emoji-toggle" class="composer-icon-button" type="button" aria-label="Add emoji" title="Add emoji">☺</button>
                         <textarea id="message-input" rows="1" maxlength="4000" placeholder="Write a message…" autocomplete="off" required></textarea>
-                        <span class="composer-hint">Enter to send · Shift + Enter for a new line</span>
+                        <span class="composer-hint">Enter for a new line</span>
                         <button id="send-message-button" class="send-button" type="submit" aria-label="Send message" title="Send message">
                             <span>Send</span><span aria-hidden="true">↗</span>
                         </button>

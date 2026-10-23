@@ -93,6 +93,12 @@ const messageForm = $("message-form");
 const messageInput = $("message-input");
 const sendMessageButton = $("send-message-button");
 const backToListButton = $("back-to-list");
+const emojiToggle = $("emoji-toggle");
+const emojiPicker = $("emoji-picker");
+const replyPreview = $("reply-preview");
+const replyPreviewLabel = $("reply-preview-label");
+const replyPreviewText = $("reply-preview-text");
+const cancelReplyButton = $("cancel-reply");
 
 const chatHeader = document.querySelector(".chat-header");
 
@@ -119,6 +125,7 @@ let activeChatData = null;
 let activeChatPartner = null;
 let messageCache = [];
 let searchGeneration = 0;
+let replyingTo = null;
 const visibleLastMessageByChat = new Map();
 
 const readResetInProgress = new Set();
@@ -828,8 +835,10 @@ document.addEventListener("click", (event) => {
             .querySelectorAll(".message-row.actions-visible")
             .forEach((row) => {
                 row.classList.remove("actions-visible");
-                const actions = row.querySelector(".message-actions");
-                if (actions) actions.style.display = "none";
+                row.querySelectorAll(".message-actions, .reaction-actions")
+                    .forEach((actions) => {
+                        actions.style.display = "none";
+                    });
             });
     }
 });
@@ -2138,6 +2147,7 @@ function renderMessages() {
 
         const row = document.createElement("div");
         row.className = `message-row${mine ? " mine" : ""}`;
+        row.dataset.messageId = message.id;
 
         const bubble = document.createElement("div");
         bubble.className = "message-bubble";
@@ -2150,16 +2160,72 @@ function renderMessages() {
                 .querySelectorAll(".message-row.actions-visible")
                 .forEach((item) => {
                     item.classList.remove("actions-visible");
-                    const actions = item.querySelector(".message-actions");
-                    if (actions) actions.style.display = "none";
+                    item.querySelectorAll(".message-actions, .reaction-actions")
+                        .forEach((actions) => {
+                            actions.style.display = "none";
+                        });
                 });
 
             row.classList.add("actions-visible");
-            const actions = row.querySelector(".message-actions");
-            if (actions) actions.style.display = "flex";
+            row.querySelectorAll(".message-actions, .reaction-actions")
+                .forEach((actions) => {
+                    actions.style.display = "flex";
+                });
         };
 
+        let pointerStartX = 0;
+        let pointerStartY = 0;
+        let longPressTimer = null;
+        let suppressNextClick = false;
+
+        const cancelLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        bubble.addEventListener("pointerdown", (event) => {
+            pointerStartX = event.clientX;
+            pointerStartY = event.clientY;
+            suppressNextClick = false;
+
+            longPressTimer = setTimeout(() => {
+                showActions();
+                toggleReactionPicker(message, row);
+                suppressNextClick = true;
+            }, 550);
+        });
+
+        bubble.addEventListener("pointermove", (event) => {
+            const deltaX = event.clientX - pointerStartX;
+            const deltaY = event.clientY - pointerStartY;
+
+            if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) {
+                cancelLongPress();
+            }
+        });
+
+        bubble.addEventListener("pointerup", (event) => {
+            cancelLongPress();
+
+            const deltaX = event.clientX - pointerStartX;
+            const deltaY = event.clientY - pointerStartY;
+
+            if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                beginReply(message);
+                suppressNextClick = true;
+            }
+        });
+
+        bubble.addEventListener("pointercancel", cancelLongPress);
+
         row.addEventListener("click", (event) => {
+            if (suppressNextClick) {
+                suppressNextClick = false;
+                return;
+            }
+
             if (!event.target.closest(".message-actions")) {
                 showActions();
             }
@@ -2172,9 +2238,32 @@ function renderMessages() {
             }
         });
 
-        bubble.textContent = message.deletedForEveryone
+        const replyTarget = message.replyTo?.id
+            ? messageCache.find((item) => item.id === message.replyTo.id)
+            : null;
+
+        const replyTargetHidden = replyTarget && (
+            replyTarget.deletedForEveryone ||
+            (replyTarget.deletedFor || []).includes(currentUser?.uid)
+        );
+
+        if (message.replyTo && !replyTargetHidden) {
+            const quotedReply = document.createElement("span");
+            quotedReply.className = "message-reply-quote";
+            quotedReply.textContent = message.replyTo.text || "Message";
+            quotedReply.title = "Jump to original message";
+            quotedReply.addEventListener("click", (event) => {
+                event.stopPropagation();
+                focusMessage(message.replyTo.id);
+            });
+            bubble.append(quotedReply);
+        }
+
+        const messageText = document.createElement("span");
+        messageText.textContent = message.deletedForEveryone
             ? "This message was deleted."
             : (message.text || "");
+        bubble.append(messageText);
 
         if (message.editedAt && !message.deletedForEveryone) {
             const edited = document.createElement("span");
@@ -2186,6 +2275,8 @@ function renderMessages() {
 
         const meta = document.createElement("div");
         meta.className = "message-meta";
+        let actions = null;
+        let reactionActions = null;
 
         if (!message.deletedForEveryone && message.senderId === currentUser?.uid) {
             const readBy = message.readBy || [];
@@ -2215,8 +2306,11 @@ function renderMessages() {
 
             meta.append(time);
 
-            const actions = document.createElement("div");
+            actions = document.createElement("div");
             actions.className = "message-actions";
+
+            reactionActions = document.createElement("div");
+            reactionActions.className = "reaction-actions";
 
             if (mine) {
                 const edit = document.createElement("button");
@@ -2229,6 +2323,38 @@ function renderMessages() {
                 actions.append(edit);
             }
 
+            for (const emoji of quickReactionChoices) {
+                const quickReact = document.createElement("button");
+                quickReact.type = "button";
+                quickReact.textContent = emoji;
+                quickReact.title = `React with ${emoji}`;
+                quickReact.setAttribute("aria-label", `React with ${emoji}`);
+                quickReact.addEventListener("click", () => {
+                    void toggleReaction(message, emoji);
+                });
+                reactionActions.append(quickReact);
+            }
+
+            const react = document.createElement("button");
+            react.type = "button";
+            react.textContent = "+";
+            react.title = "Add reaction";
+            react.setAttribute("aria-label", "Add reaction");
+            react.addEventListener("click", () => {
+                toggleReactionPicker(message, row);
+            });
+
+            reactionActions.append(react);
+
+            const reply = document.createElement("button");
+            reply.type = "button";
+            reply.textContent = "Reply";
+            reply.addEventListener("click", () => {
+                beginReply(message);
+            });
+
+            actions.append(reply);
+
             const remove = document.createElement("button");
             remove.type = "button";
             remove.textContent = "Delete";
@@ -2237,13 +2363,18 @@ function renderMessages() {
             });
 
             actions.append(remove);
-            meta.append(actions);
         }
 
         row.append(bubble);
 
+        if (reactionActions) row.append(reactionActions);
+
+        const reactions = renderReactions(message);
+        if (reactions) row.append(reactions);
+
         if (!message.deletedForEveryone) {
             row.append(meta);
+            if (actions) row.append(actions);
         }
 
         messagesList.append(row);
@@ -2283,6 +2414,66 @@ function formatDayLabel(date) {
 /* =========================================================
    SEND MESSAGE
 ========================================================= */
+
+const composerEmojis = [
+    "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃",
+    "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "😎", "🤓",
+    "🧐", "🤗", "🤭", "🤔", "🫡", "😐", "😑", "😶", "🙄", "😏",
+    "😣", "😥", "😮", "🤐", "😯", "😪", "😫", "🥱", "😴", "😌",
+    "🤤", "😛", "😜", "🤪", "😝", "🤨", "🤑", "😒", "😔", "😭",
+    "😢", "😤", "😠", "😡", "🤬", "😱", "😨", "😰", "😳", "🤯",
+    "🥳", "🤠", "💀", "👻", "👽", "🤖", "💩", "😺", "👍", "👎",
+    "👏", "🙌", "🙏", "🤝", "💪", "👋", "✌️", "🤞", "❤️", "🧡",
+    "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💕", "🔥", "✨",
+    "⭐", "💯", "🎉", "🎊", "✅", "❌", "⚡", "💡", "💬", "📌",
+    "🎁", "☕", "🍕", "🍔", "🍟", "🍎", "🎵", "🚀", "⚽", "🏀",
+    "🎮", "🌟", "🌈", "☀️", "🌙", "🌸", "🐶", "🐱"
+];
+
+function toggleEmojiPicker() {
+    if (!emojiPicker) return;
+
+    emojiPicker.replaceChildren();
+    emojiPicker.hidden = !emojiPicker.hidden;
+
+    if (emojiPicker.hidden) return;
+
+    for (const emoji of composerEmojis) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = emoji;
+        button.addEventListener("click", () => {
+            const start = messageInput.selectionStart ?? messageInput.value.length;
+            const end = messageInput.selectionEnd ?? start;
+
+            messageInput.value =
+                messageInput.value.slice(0, start) +
+                emoji +
+                messageInput.value.slice(end);
+
+            messageInput.focus();
+            messageInput.setSelectionRange(
+                start + emoji.length,
+                start + emoji.length
+            );
+            autoResizeMessageInput();
+        });
+        emojiPicker.append(button);
+    }
+}
+
+emojiToggle?.addEventListener("click", toggleEmojiPicker);
+cancelReplyButton?.addEventListener("click", clearReply);
+
+document.addEventListener("click", (event) => {
+    if (
+        emojiPicker &&
+        !emojiPicker.hidden &&
+        !event.target.closest("#emoji-picker, #emoji-toggle")
+    ) {
+        emojiPicker.hidden = true;
+    }
+});
 
 messageForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2360,7 +2551,8 @@ messageForm?.addEventListener("submit", async (event) => {
             transaction.set(messageRef, {
                 senderId: currentUser.uid,
                 text,
-                createdAt: serverTimestamp()
+                createdAt: serverTimestamp(),
+                ...(replyingTo ? { replyTo: replyingTo } : {})
             });
 
             transaction.update(chatRef, {
@@ -2379,6 +2571,8 @@ messageForm?.addEventListener("submit", async (event) => {
         });
 
         playSound("send");
+        clearReply();
+        if (emojiPicker) emojiPicker.hidden = true;
         messageInput.value = "";
         autoResizeMessageInput();
         messageInput.focus();
@@ -2516,4 +2710,158 @@ async function loadProfileCount() {
         console.warn("Could not load profile count:", error);
         profileCountValue.textContent = "--";
     }
+}
+
+const reactionChoices = composerEmojis;
+const quickReactionChoices = ["❤️", "😂", "👍", "😮", "🔥"];
+
+function beginReply(message) {
+    replyingTo = {
+        id: message.id,
+        senderId: message.senderId,
+        text: message.deletedForEveryone
+            ? "This message was deleted."
+            : (message.text || "Message")
+    };
+
+    if (replyPreviewLabel) {
+        replyPreviewLabel.textContent = message.senderId === currentUser?.uid
+            ? "Replying to yourself"
+            : `Replying to ${activeChatPartner?.displayName || "friend"}`;
+    }
+
+    if (replyPreviewText) replyPreviewText.textContent = replyingTo.text;
+    if (replyPreview) replyPreview.hidden = false;
+
+    messageInput?.focus();
+}
+
+function clearReply() {
+    replyingTo = null;
+
+    if (replyPreview) replyPreview.hidden = true;
+    if (replyPreviewText) replyPreviewText.textContent = "";
+}
+
+function renderReactions(message) {
+    const reactions = message.reactions || {};
+    const entries = Object.entries(reactions)
+        .filter(([, users]) => Array.isArray(users) && users.length);
+
+    if (!entries.length) return null;
+
+    const list = document.createElement("div");
+    list.className = "message-reactions";
+
+    for (const [emoji, users] of entries) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = users.includes(currentUser?.uid)
+            ? "is-reacted"
+            : "";
+        button.textContent = `${emoji} ${users.length}`;
+        button.addEventListener("click", () => {
+            toggleReaction(message, emoji);
+        });
+        list.append(button);
+    }
+
+    return list;
+}
+
+async function toggleReactionPicker(message) {
+    const picker = document.createElement("div");
+    picker.className = "reaction-modal-picker";
+
+    for (const emoji of reactionChoices) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = emoji;
+        button.setAttribute("aria-label", `React with ${emoji}`);
+        button.addEventListener("click", async () => {
+            await toggleReaction(message, emoji);
+            closeCustomModal(emoji);
+        });
+        picker.append(button);
+    }
+
+    await showCustomModal({
+        type: "reaction",
+        title: "React to message",
+        description: "Choose an emoji reaction.",
+        icon: "☺",
+        content: picker,
+        buttons: [
+            {
+                label: "Cancel",
+                action: "cancel",
+                style: "custom-modal-button-secondary"
+            }
+        ]
+    });
+}
+
+async function toggleReaction(message, emoji) {
+    if (!currentUser || !activeChatId || !message?.id) return;
+
+    const messageRef = doc(
+        db,
+        "chats",
+        activeChatId,
+        "messages",
+        message.id
+    );
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const snapshot = await transaction.get(messageRef);
+            if (!snapshot.exists()) return;
+
+            const data = snapshot.data();
+            const reactions = { ...(data.reactions || {}) };
+            const users = Array.isArray(reactions[emoji])
+                ? [...reactions[emoji]]
+                : [];
+            const index = users.indexOf(currentUser.uid);
+
+            if (index === -1) {
+                users.push(currentUser.uid);
+            } else {
+                users.splice(index, 1);
+            }
+
+            if (users.length) {
+                reactions[emoji] = users;
+            } else {
+                delete reactions[emoji];
+            }
+
+            transaction.update(messageRef, { reactions });
+        });
+    } catch (error) {
+        console.error("Could not update reaction:", error);
+    }
+}
+
+function focusMessage(messageId) {
+    if (!messageId || !messagesList) return;
+
+    const target = messagesList.querySelector(
+        `[data-message-id="${CSS.escape(messageId)}"]`
+    );
+
+    if (!target) return;
+
+    target.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+    });
+
+    target.classList.remove("message-target-highlight");
+    void target.offsetWidth;
+    target.classList.add("message-target-highlight");
+
+    window.setTimeout(() => {
+        target.classList.remove("message-target-highlight");
+    }, 1400);
 }

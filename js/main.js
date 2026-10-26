@@ -251,6 +251,75 @@ const customModalError = document.getElementById(
 
 let customModalResolver = null;
 
+
+function appendMessageTextWithLinks(container, text) {
+    const content = String(text ?? "");
+
+    const urlPattern =
+        /(?:https?:\/\/|www\.)[^\s<>"']+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s<>"']*)?/gi;
+
+    let lastIndex = 0;
+    let match;
+
+    while ((match = urlPattern.exec(content)) !== null) {
+        let urlText = match[0];
+        let trailing = "";
+
+        // Keep punctuation outside the clickable link.
+        while (/[.,!?;:)\]}]$/.test(urlText)) {
+            trailing = urlText.slice(-1) + trailing;
+            urlText = urlText.slice(0, -1);
+        }
+
+        if (!urlText) continue;
+
+        container.append(
+            document.createTextNode(
+                content.slice(lastIndex, match.index)
+            )
+        );
+
+        const link = document.createElement("a");
+        link.className = "chat-message-link";
+        link.textContent = urlText;
+
+        const href = /^https?:\/\//i.test(urlText)
+            ? urlText
+            : `https://${urlText}`;
+
+        try {
+            const parsedUrl = new URL(href);
+
+            if (["http:", "https:"].includes(parsedUrl.protocol)) {
+                link.href = parsedUrl.href;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer nofollow";
+                link.referrerPolicy = "no-referrer";
+
+                container.append(link);
+            } else {
+                container.append(
+                    document.createTextNode(urlText)
+                );
+            }
+        } catch {
+            container.append(
+                document.createTextNode(urlText)
+            );
+        }
+
+        container.append(
+            document.createTextNode(trailing)
+        );
+
+        lastIndex = match.index + match[0].length;
+    }
+
+    container.append(
+        document.createTextNode(content.slice(lastIndex))
+    );
+}
+
 function closeCustomModal(result = null) {
     if (!customModalOverlay) return;
 
@@ -2658,12 +2727,23 @@ function renderMessages() {
 
         } else {
             const messageText = document.createElement("span");
-            messageText.dir = directionForText(message.text);
-            messageText.textContent = message.deletedForEveryone
+            messageText.className = "message-text-content";
+
+            const text = message.deletedForEveryone
                 ? "This message was deleted."
                 : (message.text || "");
+
+            messageText.dir = directionForText(text);
+
+            if (!message.deletedForEveryone) {
+                appendMessageTextWithLinks(messageText, text);
+            } else {
+                messageText.textContent = text;
+            }
+
             bubble.append(messageText);
         }
+
 
         if (message.editedAt && !message.deletedForEveryone) {
             const edited = document.createElement("span");

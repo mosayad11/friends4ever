@@ -34,6 +34,59 @@ import {
 import { db } from "./firebase.js";
 import { playSound } from "./sounds.js";
 
+/* =========================================================
+   CLOUDINARY MEDIA STORAGE
+========================================================= */
+
+const CLOUDINARY_CLOUD_NAME = "fjfq5xkq";
+const CLOUDINARY_UPLOAD_PRESET = "friends4ever_media";
+
+async function uploadMediaFile(file) {
+    if (!(file instanceof File || file instanceof Blob)) {
+        throw new Error("Invalid media file.");
+    }
+
+    if (!file.size) {
+        throw new Error("The selected file is empty.");
+    }
+
+    const formData = new FormData();
+
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+    const uploadUrl =
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+
+    const response = await fetch(uploadUrl, {
+        method: "POST",
+        body: formData
+    });
+
+    let result;
+
+    try {
+        result = await response.json();
+    } catch {
+        throw new Error("Cloudinary returned an invalid response.");
+    }
+
+    if (!response.ok || !result.secure_url) {
+        throw new Error(
+            result.error?.message || "Failed to upload media to Cloudinary."
+        );
+    }
+
+    return {
+        publicUrl: result.secure_url,
+        publicId: result.public_id,
+        resourceType: result.resource_type,
+        format: result.format,
+        size: result.bytes
+    };
+}
+
+
 
 /* =========================================================
    ELEMENTS AND STATE
@@ -74,6 +127,7 @@ const themeIcon = $("theme-icon");
 
 const userSearch = $("user-search");
 const clearSearchButton = $("clear-search");
+const findPeopleButton = $("find-people-button");
 const searchHint = $("search-hint");
 const searchResults = $("search-results");
 
@@ -87,11 +141,21 @@ const chatUserPhoto = $("chat-user-photo");
 const chatUserFallback = $("chat-user-fallback");
 const chatUserName = $("chat-user-name");
 const chatSubtitle = $("chat-subtitle");
+const chatPresenceStatus = $("chat-presence-status");
 const messagesList = $("messages-list");
 const chatError = $("chat-error");
 const messageForm = $("message-form");
 const messageInput = $("message-input");
 const sendMessageButton = $("send-message-button");
+const voiceRecordButton = $("voice-message-button") || $("voice-record-button");
+const voiceCancelButton = $("cancel-voice-recording") || $("voice-cancel-button");
+const voiceRecordingStatus = $("voice-recording-status");
+const imageMessageButton = $("image-message-button");
+const imageMessageInput = $("image-message-input");
+const voicePreviewPanel = $("voice-preview-panel");
+const voicePreviewPlayer = $("voice-preview-player");
+const cancelVoicePreviewButton = $("cancel-voice-preview");
+const sendVoicePreviewButton = $("send-voice-message");
 const backToListButton = $("back-to-list");
 const emojiToggle = $("emoji-toggle");
 const emojiPicker = $("emoji-picker");
@@ -117,6 +181,7 @@ let profileSaveInProgress = false;
 
 let unsubscribeChats = null;
 let unsubscribeMessages = null;
+let unsubscribePartnerPresence = null;
 let searchTimer = null;
 
 let chatRecords = [];
@@ -126,7 +191,20 @@ let activeChatPartner = null;
 let messageCache = [];
 let searchGeneration = 0;
 let replyingTo = null;
+let typingTimer = null;
+let typingState = false;
+let presenceHeartbeat = null;
 const visibleLastMessageByChat = new Map();
+const voiceObjectUrls = new Map();
+let voiceRecorder = null;
+let voiceChunks = [];
+let voiceStartedAt = 0;
+let voiceDurationTimer = null;
+let voiceCancelRequested = false;
+let voiceRecordingTarget = null;
+let pendingVoiceMessage = null;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 
 const readResetInProgress = new Set();
 let receivedMessageIds = new Set();
@@ -329,6 +407,8 @@ async function editMessage(message) {
     const messageId = message?.id;
     const currentText = String(message?.text || "");
 
+    if (message?.type === "image" || message?.type === "audio") return false;
+
     if (!messageId) {
         console.error("Missing message id for edit.", message);
         return false;
@@ -485,6 +565,17 @@ async function deleteMessage(message) {
                             deletedForEveryone: true,
                             deletedAt: serverTimestamp()
                         });
+                        const mediaPath = message.mediaPath || message.audioPath;
+                        if (mediaPath) {
+                            try {
+                                const cachedUrl = voiceObjectUrls.get(mediaPath);
+                                if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+                                voiceObjectUrls.delete(mediaPath);
+                            } catch (storageError) {
+                                // The message remains, and the renderer will show an unavailable state.
+                                console.warn("Could not remove deleted media immediately; scheduled cleanup will handle it:", storageError);
+                            }
+                        }
                     } else {
                         await updateDoc(messageRef, {
                             deletedFor: arrayUnion(currentUser.uid)
@@ -618,16 +709,38 @@ function makeChatId(uidA, uidB) {
     return sortUids(uidA, uidB).join("__");
 }
 
+function isSelfChat(chatData = activeChatData) {
+    return Boolean(
+        currentUser &&
+        Array.isArray(chatData?.participants) &&
+        chatData.participants.length === 1 &&
+        chatData.participants[0] === currentUser.uid
+    );
+}
+
 function partnerUidFrom(chatData) {
-    return (chatData.participants || [])
-        .find((uid) => uid !== currentUser?.uid) || null;
+    const participants = chatData?.participants || [];
+    if (
+        currentUser &&
+        participants.length === 1 &&
+        participants[0] === currentUser.uid
+    ) {
+        return currentUser.uid;
+    }
+    return participants.find((uid) => uid !== currentUser?.uid) || null;
 }
 
 function profileNameForChat(chatData, uid) {
+    if (currentUser && uid === currentUser.uid && (chatData?.participants || []).length === 1) {
+        return "Notes to Self";
+    }
     return chatData.participantNames?.[uid] || "Friend";
 }
 
 function profilePhotoForChat(chatData, uid) {
+    if (currentUser && uid === currentUser.uid && (chatData?.participants || []).length === 1) {
+        return currentProfile?.photoURL || currentUser.photoURL || "";
+    }
     return chatData.participantPhotos?.[uid] || "";
 }
 
@@ -984,7 +1097,7 @@ function renderSearchResults(profiles) {
     searchResults.replaceChildren();
 
     if (!profiles.length) {
-        renderSearchState("No matching people found.");
+        renderSearchState("Check the name: this username is not available.");
         return;
     }
 
@@ -1048,10 +1161,8 @@ async function searchUsers(rawTerm) {
     try {
         const usersQuery = query(
             collection(db, "users"),
-            orderBy("displayNameLower"),
-            startAt(term),
-            endAt(term + "\uf8ff"),
-            limit(12)
+            where("displayNameLower", "==", term),
+            limit(1)
         );
 
         const snapshot = await getDocs(usersQuery);
@@ -1071,7 +1182,7 @@ async function searchUsers(rawTerm) {
                 ? `${profiles.length} ${
                     profiles.length === 1 ? "person" : "people"
                 } found`
-                : "No matches yet.";
+                : "That username is not available.";
         }
 
         renderSearchResults(profiles);
@@ -1091,11 +1202,16 @@ async function searchUsers(rawTerm) {
 }
 
 userSearch?.addEventListener("input", () => {
-    if (searchTimer) clearTimeout(searchTimer);
+    if (clearSearchButton) clearSearchButton.hidden = !userSearch.value;
 
-    searchTimer = setTimeout(() => {
-        searchUsers(userSearch.value);
-    }, 250);
+    if (searchHint) {
+        searchHint.textContent =
+            "Press Find to search the exact username.";
+    }
+});
+
+findPeopleButton?.addEventListener("click", () => {
+    void searchUsers(userSearch.value);
 });
 
 clearSearchButton?.addEventListener("click", () => {
@@ -1365,7 +1481,11 @@ async function refreshVisibleLastMessage(chatId) {
             visibleLastMessageByChat.set(chatId, {
                 text: visibleMessage.deletedForEveryone
                     ? "This message was deleted."
-                    : (visibleMessage.text || ""),
+                    : (visibleMessage.type === "audio"
+                        ? "🎤 Voice message"
+                        : visibleMessage.type === "image"
+                            ? "📷 Image"
+                            : (visibleMessage.text || "")),
                 senderId: visibleMessage.senderId,
                 createdAt: visibleMessage.createdAt
             });
@@ -1376,9 +1496,15 @@ async function refreshVisibleLastMessage(chatId) {
         if (activeChatId === chatId) {
             activeChatData = {
                 ...activeChatData,
-                lastMessage: visibleLastMessage?.text || "",
-                lastSenderId: visibleLastMessage?.senderId || null,
-                lastMessageAt: visibleLastMessage?.createdAt || null
+                lastMessage: visibleMessage?.deletedForEveryone
+                    ? "This message was deleted."
+                    : (visibleMessage?.type === "audio"
+                        ? "🎤 Voice message"
+                        : visibleMessage?.type === "image"
+                            ? "📷 Image"
+                            : (visibleMessage?.text || "")),
+                lastSenderId: visibleMessage?.senderId || null,
+                lastMessageAt: visibleMessage?.createdAt || null
             };
         }
 
@@ -1421,6 +1547,7 @@ function subscribeToConversations() {
 
                 if (current) {
                     activeChatData = current.data;
+                    renderChatPresence();
 
                     const partnerUid = partnerUidFrom(current.data);
 
@@ -1562,6 +1689,49 @@ async function openConversationWith(profile) {
     }
 }
 
+async function openSelfChat() {
+    if (!currentUser) return;
+
+    const chatId = `self__${currentUser.uid}`;
+    const chatRef = doc(db, "chats", chatId);
+
+    try {
+        const existing = await getDoc(chatRef);
+        if (!existing.exists()) {
+            const name = currentProfile?.displayName || "Notes to Self";
+            const photo = currentProfile?.photoURL || currentUser.photoURL || "";
+            await setDoc(chatRef, {
+                participants: [currentUser.uid],
+                participantNames: { [currentUser.uid]: name },
+                participantPhotos: { [currentUser.uid]: photo },
+                unreadCounts: { [currentUser.uid]: 0 },
+                lastMessage: "",
+                lastSenderId: "",
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                lastMessageAt: serverTimestamp(),
+                requestStatus: "accepted",
+                requestedBy: currentUser.uid,
+                blockedBy: []
+            });
+        }
+
+        const fresh = await getDoc(chatRef);
+        await openExistingConversation(chatId, fresh.data(), {
+            uid: currentUser.uid,
+            displayName: "Notes to Self",
+            photoURL: currentProfile?.photoURL || currentUser.photoURL || ""
+        });
+    } catch (error) {
+        console.error("Could not open Notes to Self:", error);
+        showChatError("Could not open Notes to Self. Check Firestore rules.");
+    }
+}
+
+$("open-self-chat")?.addEventListener("click", () => {
+    void openSelfChat();
+});
+
 function isChatAccepted(data = activeChatData) {
     return (
         data?.requestStatus === "accepted" ||
@@ -1577,6 +1747,10 @@ function setComposerEnabled(enabled) {
     if (messageForm) messageForm.hidden = !enabled;
     if (messageInput) messageInput.disabled = !enabled;
     if (sendMessageButton) sendMessageButton.disabled = !enabled;
+    if (voiceRecordButton) voiceRecordButton.disabled = !enabled;
+    if (imageMessageButton) imageMessageButton.disabled = !enabled;
+    if (emojiToggle) emojiToggle.disabled = !enabled;
+    updateComposerMode?.();
 }
 
 function addRequestButton(label, className, handler) {
@@ -1603,6 +1777,13 @@ function renderChatControls() {
     const status = data.requestStatus;
     const requester = data.requestedBy === currentUser.uid;
     const blockedBy = data.blockedBy || [];
+
+    if (isSelfChat(data)) {
+        requestPanel.hidden = true;
+        setComposerEnabled(true);
+        chatHeader?.querySelector(".chat-block-button")?.remove();
+        return;
+    }
 
     if (blockedBy.length) {
         const p = document.createElement("p");
@@ -1918,6 +2099,100 @@ async function unblockChat() {
    OPEN EXISTING CONVERSATION
 ========================================================= */
 
+async function updateOwnPresence(status) {
+    if (!currentUser) return;
+
+    try {
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            presenceStatus: status,
+            lastActiveAt: serverTimestamp(),
+            ...(status === "offline"
+                ? { lastSeenAt: serverTimestamp() }
+                : {})
+        });
+    } catch (error) {
+        console.warn("Could not update presence:", error);
+    }
+}
+
+function formatLastSeen(timestamp) {
+    const date = timestamp?.toDate?.();
+
+    if (!date) return "last seen recently";
+
+    return `last seen at ${new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        month: "short",
+        day: "numeric"
+    }).format(date)}`;
+}
+
+function renderChatPresence(profile = null) {
+    if (!chatPresenceStatus || !activeChatPartner) return;
+
+    const partnerUid = activeChatPartner.uid;
+    const typingBy = activeChatData?.typingBy || {};
+
+    if (typingBy[partnerUid]) {
+        chatPresenceStatus.textContent = "typing…";
+        chatPresenceStatus.className = "chat-presence-status is-typing";
+        return;
+    }
+
+    const presence = profile || activeChatPartner.presence || {};
+    const isOnline = presence.presenceStatus === "online" && (
+        !presence.lastActiveAt?.toDate ||
+        Date.now() - presence.lastActiveAt.toDate().getTime() < 90000
+    );
+
+    chatPresenceStatus.textContent = isOnline
+        ? "online"
+        : formatLastSeen(presence.lastSeenAt || presence.lastActiveAt);
+    chatPresenceStatus.className = isOnline
+        ? "chat-presence-status is-online"
+        : "chat-presence-status";
+}
+
+function subscribeToPartnerPresence(partnerUid) {
+    unsubscribePartnerPresence?.();
+    unsubscribePartnerPresence = null;
+
+    if (!partnerUid) return;
+
+    unsubscribePartnerPresence = onSnapshot(
+        doc(db, "users", partnerUid),
+        (snapshot) => {
+            const profile = snapshot.exists() ? snapshot.data() : {};
+
+            activeChatPartner = {
+                ...activeChatPartner,
+                presence: profile
+            };
+
+            renderChatPresence(profile);
+        },
+        (error) => {
+            console.warn("Could not watch partner presence:", error);
+            renderChatPresence();
+        }
+    );
+}
+
+function setTypingState(isTyping) {
+    if (!currentUser || !activeChatId || typingState === isTyping) {
+        return;
+    }
+
+    typingState = isTyping;
+
+    void updateDoc(doc(db, "chats", activeChatId), {
+        [`typingBy.${currentUser.uid}`]: isTyping
+    }).catch((error) => {
+        console.warn("Could not update typing state:", error);
+    });
+}
+
 async function openExistingConversation(
     chatId,
     chatData,
@@ -1938,33 +2213,28 @@ async function openExistingConversation(
             photoURL: profilePhotoForChat(chatData, partnerUid)
         };
 
-        // Refresh the partner's public display data when opening the chat.
-        try {
-            const partnerSnapshot = await getDoc(
-                doc(db, "users", partnerUid)
-            );
-
-            if (partnerSnapshot.exists()) {
-                const profile = partnerSnapshot.data();
-
-                partner = {
-                    uid: partnerUid,
-                    displayName:
-                        profile.displayName || partner.displayName,
-                    photoURL: profile.photoURL || partner.photoURL
-                };
+        // A self-chat is always labelled Notes to Self, not the account name.
+        if (partnerUid !== currentUser.uid) {
+            try {
+                const partnerSnapshot = await getDoc(doc(db, "users", partnerUid));
+                if (partnerSnapshot.exists()) {
+                    const profile = partnerSnapshot.data();
+                    partner = {
+                        uid: partnerUid,
+                        displayName: profile.displayName || partner.displayName,
+                        photoURL: profile.photoURL || partner.photoURL
+                    };
+                }
+            } catch (error) {
+                console.warn("Could not refresh partner profile:", error);
             }
-        } catch (error) {
-            console.warn(
-                "Could not refresh partner profile:",
-                error
-            );
         }
     }
 
     activeChatId = chatId;
     activeChatData = chatData;
     activeChatPartner = partner;
+    typingState = false;
 
     chatPlaceholder.hidden = true;
     activeChat.hidden = false;
@@ -1977,6 +2247,13 @@ async function openExistingConversation(
     draftPartner = null;
 
     renderChatHeader(partner);
+    if (partner.uid !== currentUser.uid) {
+        subscribeToPartnerPresence(partner.uid);
+    } else {
+        unsubscribePartnerPresence?.();
+        unsubscribePartnerPresence = null;
+        if (chatPresenceStatus) chatPresenceStatus.textContent = "Your private notes";
+    }
     renderChatControls();
     renderConversationList();
 
@@ -2012,7 +2289,11 @@ function renderChatHeader(partner) {
     chatHeader?.querySelector(".chat-block-button")?.remove();
 
     chatUserName.textContent = partner.displayName || "Friend";
-    chatSubtitle.textContent = "Private conversation";
+    if (partner.uid === currentUser?.uid) {
+        if (chatPresenceStatus) chatPresenceStatus.textContent = "Your private notes";
+    } else {
+        renderChatPresence(partner.presence || null);
+    }
 
     showAvatar(
         chatUserPhoto,
@@ -2091,6 +2372,19 @@ function subscribeToMessages(chatId) {
         }
     );
 }
+
+function formatVoiceDuration(seconds) {
+    const totalSeconds = Math.max(
+        0,
+        Math.floor(Number(seconds) || 0)
+    );
+
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
+
+    return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 /* =========================================================
    RENDER MESSAGES
 ========================================================= */
@@ -2259,11 +2553,117 @@ function renderMessages() {
             bubble.append(quotedReply);
         }
 
-        const messageText = document.createElement("span");
-        messageText.textContent = message.deletedForEveryone
-            ? "This message was deleted."
-            : (message.text || "");
-        bubble.append(messageText);
+        if (message.type === "image" && !message.deletedForEveryone) {
+            const imageWrap = document.createElement("div");
+            imageWrap.className = "image-message-wrap";
+            if (message.mediaUrl) {
+                const image = document.createElement("img");
+                image.className = "image-message";
+                image.alt = "Shared image";
+                image.loading = "lazy";
+                image.src = message.mediaUrl;
+                image.addEventListener("error", () => {
+                    const unavailable = document.createElement("span");
+                    unavailable.className = "media-unavailable";
+                    unavailable.textContent = "Image unavailable";
+                    image.replaceWith(unavailable);
+                }, { once: true });
+                image.addEventListener("click", () => window.open(message.mediaUrl, "_blank", "noopener,noreferrer"));
+                imageWrap.append(image);
+            } else {
+                const unavailable = document.createElement("span");
+                unavailable.className = "media-unavailable";
+                unavailable.textContent = "Image unavailable";
+                imageWrap.append(unavailable);
+            }
+            bubble.append(imageWrap);
+        
+        } else if (message.type === "audio" && !message.deletedForEveryone) {
+            const player = document.createElement("div");
+            player.className = "voice-message-player";
+
+            const playButton = document.createElement("button");
+            playButton.type = "button";
+            playButton.className = "voice-play-button";
+            playButton.textContent = "▶";
+            playButton.setAttribute("aria-label", "Play voice message");
+
+            const details = document.createElement("span");
+            details.className = "voice-message-details";
+            details.textContent =
+                `Voice message · ${formatVoiceDuration(message.durationSeconds || 0)}`;
+
+            playButton.addEventListener("click", async () => {
+                let audio = player.querySelector("audio");
+
+                if (audio) {
+                    if (audio.paused) {
+                        try {
+                            await audio.play();
+                        } catch (error) {
+                            console.error("Voice playback failed:", error);
+                            details.textContent = "Unable to play voice message";
+                        }
+                    } else {
+                        audio.pause();
+                    }
+
+                    return;
+                }
+
+                const audioUrl = message.audioUrl || message.mediaUrl;
+
+                if (!audioUrl) {
+                    details.textContent = "Voice message unavailable";
+                    return;
+                }
+
+                playButton.disabled = true;
+                details.textContent = "Loading audio…";
+
+                try {
+                    audio = document.createElement("audio");
+                    audio.controls = true;
+                    audio.preload = "none";
+                    audio.src = audioUrl;
+                    audio.setAttribute(
+                        "aria-label",
+                        "Voice message audio player"
+                    );
+
+                    audio.addEventListener("error", () => {
+                        details.textContent = "Voice message unavailable";
+                        playButton.disabled = false;
+                    });
+
+                    audio.addEventListener("loadedmetadata", () => {
+                        details.textContent =
+                            `Voice message · ${formatVoiceDuration(
+                                message.durationSeconds || audio.duration || 0
+                            )}`;
+                    });
+
+                    player.replaceChildren(audio, details);
+                    await audio.play();
+
+                } catch (error) {
+                    console.error("Voice playback failed:", error);
+                    details.textContent = "Unable to play voice message";
+                    playButton.disabled = false;
+                }
+            });
+
+            player.append(playButton, details);
+            bubble.append(player);
+
+        } else {
+            const messageText = document.createElement("span");
+            messageText.dir = directionForText(message.text);
+            messageText.textContent = message.deletedForEveryone
+                ? "This message was deleted."
+                : (message.text || "");
+            bubble.append(messageText);
+        }
 
         if (message.editedAt && !message.deletedForEveryone) {
             const edited = document.createElement("span");
@@ -2281,12 +2681,12 @@ function renderMessages() {
         if (!message.deletedForEveryone && message.senderId === currentUser?.uid) {
             const readBy = message.readBy || [];
 
-            const recipientUid = (activeChatData?.participants || [])
-                .find(uid => uid !== currentUser.uid);
-
-            const isRead = recipientUid
-                ? readBy.includes(recipientUid)
-                : false;
+            const participantList = activeChatData?.participants || [];
+            const selfChat = participantList.length === 1 && participantList[0] === currentUser.uid;
+            const recipientUid = participantList.find(uid => uid !== currentUser.uid);
+            const isRead = selfChat
+                ? true
+                : Boolean(recipientUid && readBy.includes(recipientUid));
 
             const receipt = document.createElement("span");
             receipt.className = isRead
@@ -2312,7 +2712,7 @@ function renderMessages() {
             reactionActions = document.createElement("div");
             reactionActions.className = "reaction-actions";
 
-            if (mine) {
+            if (mine && (!message.type || message.type === "text")) {
                 const edit = document.createElement("button");
                 edit.type = "button";
                 edit.textContent = "Edit";
@@ -2385,6 +2785,17 @@ function renderMessages() {
     }
 }
 
+
+function directionForText(value) {
+    const firstStrongCharacter = String(value || "")
+        .match(/[A-Za-z\u0600-\u06ff]/);
+
+    return firstStrongCharacter && /[\u0600-\u06ff]/.test(
+        firstStrongCharacter[0]
+    )
+        ? "rtl"
+        : "ltr";
+}
 
 function formatDayLabel(date) {
     const today = new Date();
@@ -2475,6 +2886,12 @@ document.addEventListener("click", (event) => {
     }
 });
 
+function updateComposerMode() {
+    const hasText = Boolean(messageInput?.value.trim());
+    if (sendMessageButton) sendMessageButton.hidden = !hasText;
+    if (voiceRecordButton) voiceRecordButton.hidden = hasText;
+}
+
 messageForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -2534,23 +2951,27 @@ messageForm?.addEventListener("submit", async (event) => {
                 throw new Error("This conversation is blocked.");
             }
 
+            const selfChat = (chatData.participants || []).length === 1;
             const recipientUid = (chatData.participants || [])
-                .find((uid) => uid !== currentUser.uid);
+                .find((uid) => uid !== currentUser.uid) ||
+                (selfChat ? currentUser.uid : null);
 
             if (!recipientUid) {
                 throw new Error("Could not find the recipient.");
             }
 
             const currentUnreadCounts = chatData.unreadCounts || {};
-
-            const recipientUnreadCount =
-                Number.isFinite(currentUnreadCounts[recipientUid])
+            const recipientUnreadCount = selfChat
+                ? 0
+                : (Number.isFinite(currentUnreadCounts[recipientUid])
                     ? currentUnreadCounts[recipientUid]
-                    : 0;
+                    : 0);
 
             transaction.set(messageRef, {
                 senderId: currentUser.uid,
                 text,
+                type: "text",
+                ...(selfChat ? { readBy: [currentUser.uid] } : {}),
                 createdAt: serverTimestamp(),
                 ...(replyingTo ? { replyTo: replyingTo } : {})
             });
@@ -2562,7 +2983,7 @@ messageForm?.addEventListener("submit", async (event) => {
                 unreadCounts: {
                     ...currentUnreadCounts,
                     [currentUser.uid]: 0,
-                    [recipientUid]: recipientUnreadCount + 1
+                    [recipientUid]: selfChat ? 0 : recipientUnreadCount + 1
                 },
 
                 lastMessageAt: serverTimestamp(),
@@ -2571,6 +2992,7 @@ messageForm?.addEventListener("submit", async (event) => {
         });
 
         playSound("send");
+        setTypingState(false);
         clearReply();
         if (emojiPicker) emojiPicker.hidden = true;
         messageInput.value = "";
@@ -2587,6 +3009,464 @@ messageForm?.addEventListener("submit", async (event) => {
     }
 });
 
+
+
+async function sendImageMessage(file) {
+    if (!file) {
+        throw new Error("No image selected.");
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        throw new Error("Unsupported image format.");
+    }
+
+    if (file.size > MAX_IMAGE_BYTES) {
+        throw new Error("Image size must not exceed 10 MB.");
+    }
+
+    // Use the existing current-chat variables.
+    const user = currentUser;
+    const chatId = activeChatId;
+
+    if (!user || !chatId) {
+        throw new Error("No conversation selected.");
+    }
+
+    let uploaded = null;
+
+    try {
+        // Upload the image to Cloudinary.
+        uploaded = await uploadMediaFile(file);
+
+        const chatRef = doc(db, "chats", chatId);
+        const messageRef = doc(
+            collection(db, "chats", chatId, "messages")
+        );
+
+        await runTransaction(db, async (transaction) => {
+            const chatSnapshot = await transaction.get(chatRef);
+
+            if (!chatSnapshot.exists()) {
+                throw new Error("Conversation no longer exists.");
+            }
+
+            const chatData = chatSnapshot.data();
+            const participants = chatData.participants || [];
+
+            if (!participants.includes(user.uid)) {
+                throw new Error(
+                    "You are not a participant in this conversation."
+                );
+            }
+
+            if (
+                chatData.requestStatus &&
+                chatData.requestStatus !== "accepted"
+            ) {
+                throw new Error(
+                    "This chat request has not been accepted."
+                );
+            }
+
+            if ((chatData.blockedBy || []).length) {
+                throw new Error("This conversation is blocked.");
+            }
+
+            const selfChat = participants.length === 1;
+
+            const recipientUid =
+                participants.find(uid => uid !== user.uid) ||
+                (selfChat ? user.uid : null);
+
+            if (!recipientUid) {
+                throw new Error("Could not find the recipient.");
+            }
+
+            const counts = chatData.unreadCounts || {};
+
+            const recipientCount = selfChat
+                ? 0
+                : (
+                    Number.isFinite(counts[recipientUid])
+                        ? counts[recipientUid]
+                        : 0
+                );
+
+            transaction.set(messageRef, {
+                senderId: user.uid,
+                text: "",
+                type: "image",
+
+                mediaUrl: uploaded.publicUrl,
+                mediaPublicId: uploaded.publicId,
+                mediaMimeType: file.type,
+                mediaSize: file.size,
+
+                ...(replyingTo ? { replyTo: replyingTo } : {}),
+                ...(selfChat ? { readBy: [user.uid] } : {}),
+
+                createdAt: serverTimestamp()
+            });
+
+            transaction.update(chatRef, {
+                lastMessage: "📷 Image",
+                lastSenderId: user.uid,
+
+                unreadCounts: {
+                    ...counts,
+                    [user.uid]: 0,
+                    [recipientUid]: selfChat
+                        ? 0
+                        : recipientCount + 1
+                },
+
+                lastMessageAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        });
+
+        playSound("send");
+        clearReply();
+
+        if (activeChatId === chatId) {
+            hideMessage(chatError);
+        }
+
+        return messageRef.id;
+
+    } catch (error) {
+        console.error("Failed to send image message:", error);
+        throw error;
+    }
+}
+
+function setVoiceRecordingUi(recording, message = "") {
+    const recordingPanel = $("voice-recording-panel");
+    if (recordingPanel) recordingPanel.hidden = !recording;
+    if (voiceRecordButton) {
+        voiceRecordButton.classList.toggle("is-recording", recording);
+        voiceRecordButton.textContent = recording ? "■" : "Voice Msg🎙️";
+        voiceRecordButton.title = recording ? "Stop recording" : "Record voice message";
+        voiceRecordButton.setAttribute("aria-label", voiceRecordButton.title);
+    }
+    if (voiceCancelButton) voiceCancelButton.hidden = !recording;
+    if (voiceRecordingStatus) {
+        voiceRecordingStatus.hidden = !message;
+        voiceRecordingStatus.textContent = message;
+    }
+}
+
+async function startVoiceRecording() {
+    if (!currentUser || !activeChatId || !activeChatData) return;
+    if (!isChatAccepted(activeChatData) || isChatBlocked(activeChatData)) {
+        showChatError("Accept the chat request before recording a voice message.");
+        return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        showChatError("Voice recording is not supported by this browser. Try the latest Chrome or Edge over HTTPS/localhost.");
+        return;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = [
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/mp4",
+            "audio/ogg;codecs=opus"
+        ].find(type => MediaRecorder.isTypeSupported(type));
+
+        voiceCancelRequested = false;
+        voiceChunks = [];
+        voiceStartedAt = Date.now();
+        voiceRecordingTarget = {
+            chatId: activeChatId,
+            chatData: activeChatData,
+            user: currentUser
+        };
+        voiceRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+        voiceRecorder.addEventListener("dataavailable", event => {
+            if (event.data?.size) voiceChunks.push(event.data);
+        });
+
+        voiceRecorder.addEventListener("stop", async () => {
+            const target = voiceRecordingTarget;
+            const canceled = voiceCancelRequested;
+            const durationSeconds = Math.max(1, Math.round((Date.now() - voiceStartedAt) / 1000));
+            const actualMimeType = voiceRecorder?.mimeType || mimeType || "audio/webm";
+            stream.getTracks().forEach(track => track.stop());
+            clearInterval(voiceDurationTimer);
+            voiceDurationTimer = null;
+            setVoiceRecordingUi(false);
+            voiceRecorder = null;
+            voiceRecordingTarget = null;
+
+            if (canceled) {
+                voiceChunks = [];
+                return;
+            }
+
+            const blob = new Blob(voiceChunks, { type: actualMimeType });
+            voiceChunks = [];
+            if (durationSeconds < 1 || blob.size < 1000) {
+                showChatError("The recording is too short. Record a little longer and try again.");
+                return;
+            }
+            if (durationSeconds > 120 || blob.size > 10 * 1024 * 1024) {
+                showChatError("Voice messages must be no longer than 2 minutes and smaller than 10 MB.");
+                return;
+            }
+
+            pendingVoiceMessage = { blob, durationSeconds, mimeType: actualMimeType, target };
+            if (voicePreviewPanel && voicePreviewPlayer) {
+                const previewUrl = URL.createObjectURL(blob);
+                voicePreviewPlayer.src = previewUrl;
+                voicePreviewPlayer.dataset.objectUrl = previewUrl;
+                voicePreviewPanel.hidden = false;
+                if (sendVoicePreviewButton) sendVoicePreviewButton.disabled = false;
+            } else {
+                try {
+                    await sendVoiceMessage(blob, durationSeconds, actualMimeType, target);
+                } catch (error) {
+                    console.error("Voice message send failed:", error);
+                    showChatError(error?.message || "Voice message wasn't sent. Check Supabase Storage and Firestore rules.");
+                }
+            }
+        }, { once: true });
+
+        voiceRecorder.start(250);
+        setVoiceRecordingUi(true, "Recording 0:00 · press ■ to send");
+        voiceDurationTimer = setInterval(() => {
+            const seconds = Math.floor((Date.now() - voiceStartedAt) / 1000);
+            if (voiceRecordingStatus) {
+                voiceRecordingStatus.textContent = `Recording ${formatVoiceDuration(seconds)} · press ■ to send`;
+            }
+            if (seconds >= 120 && voiceRecorder?.state === "recording") voiceRecorder.stop();
+        }, 500);
+        hideMessage(chatError);
+    } catch (error) {
+        console.error("Could not start voice recording:", error);
+        showChatError(error?.name === "NotAllowedError"
+            ? "Microphone permission was denied. Allow microphone access in your browser settings."
+            : "Could not start recording. Check your microphone and browser permissions.");
+    }
+}
+
+async function sendVoiceMessage(blob, durationSeconds, mimeType, target) {
+    const user = target?.user;
+    const chatId = target?.chatId;
+    const chatData = target?.chatData;
+
+    if (!user || !chatId || !chatData) {
+        throw new Error("Chat is no longer available.");
+    }
+
+    const extension = mimeType.includes("mp4")
+        ? "m4a"
+        : mimeType.includes("ogg")
+            ? "ogg"
+            : "webm";
+
+    const file = new File(
+        [blob],
+        `voice-${Date.now()}.${extension}`,
+        { type: mimeType }
+    );
+
+    const uploaded = await uploadMediaFile(file);
+
+    try {
+        const chatRef = doc(db, "chats", chatId);
+        const messageRef = doc(
+            collection(db, "chats", chatId, "messages")
+        );
+
+        await runTransaction(db, async transaction => {
+            const chatSnapshot = await transaction.get(chatRef);
+
+            if (!chatSnapshot.exists()) {
+                throw new Error("Conversation no longer exists.");
+            }
+
+            const currentChat = chatSnapshot.data();
+
+            if (!(currentChat.participants || []).includes(user.uid)) {
+                throw new Error(
+                    "You are not a participant in this conversation."
+                );
+            }
+
+            if (
+                currentChat.requestStatus &&
+                currentChat.requestStatus !== "accepted"
+            ) {
+                throw new Error(
+                    "This chat request has not been accepted."
+                );
+            }
+
+            if ((currentChat.blockedBy || []).length) {
+                throw new Error("This conversation is blocked.");
+            }
+
+            const selfChat =
+                (currentChat.participants || []).length === 1;
+
+            const recipientUid =
+                (currentChat.participants || []).find(
+                    uid => uid !== user.uid
+                ) || (selfChat ? user.uid : null);
+
+            if (!recipientUid) {
+                throw new Error("Could not find the recipient.");
+            }
+
+            const counts = currentChat.unreadCounts || {};
+
+            const recipientCount = selfChat
+                ? 0
+                : (
+                    Number.isFinite(counts[recipientUid])
+                        ? counts[recipientUid]
+                        : 0
+                );
+
+            transaction.set(messageRef, {
+                senderId: user.uid,
+                text: "",
+                type: "audio",
+
+                // Cloudinary media fields
+                audioUrl: uploaded.publicUrl,
+                mediaUrl: uploaded.publicUrl,
+                mediaPublicId: uploaded.publicId,
+
+                audioMimeType: mimeType.split(";")[0],
+                durationSeconds,
+
+                ...(replyingTo ? { replyTo: replyingTo } : {}),
+                ...(selfChat ? { readBy: [user.uid] } : {}),
+
+                createdAt: serverTimestamp()
+            });
+
+            transaction.update(chatRef, {
+                lastMessage: "🎤 Voice message",
+                lastSenderId: user.uid,
+
+                unreadCounts: {
+                    ...counts,
+                    [user.uid]: 0,
+                    [recipientUid]: selfChat
+                        ? 0
+                        : recipientCount + 1
+                },
+
+                lastMessageAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        });
+
+        playSound("send");
+        clearReply();
+
+        if (activeChatId === chatId) {
+            hideMessage(chatError);
+        }
+    } catch (error) {
+        // Cloudinary uploads cannot be deleted securely from the browser.
+        // Keep the original error and preserve the existing error handling.
+        throw error;
+    }
+}
+
+voiceRecordButton?.addEventListener("click", () => {
+    if (voiceRecorder?.state === "recording") voiceRecorder.stop();
+    else void startVoiceRecording();
+});
+
+imageMessageButton?.addEventListener("click", () => {
+    if (!currentUser || !activeChatId || !activeChatData) return;
+    if (!isChatAccepted(activeChatData) || isChatBlocked(activeChatData)) {
+        showChatError("Accept the chat request before sending images.");
+        return;
+    }
+    imageMessageInput?.click();
+});
+
+imageMessageInput?.addEventListener("change", async () => {
+    const file = imageMessageInput.files?.[0];
+    imageMessageInput.value = "";
+    if (!file) return;
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        showChatError("Choose a JPG, PNG, WebP, GIF, or AVIF image.");
+        return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+        showChatError("Images must be 10 MB or smaller.");
+        return;
+    }
+    try {
+        await sendImageMessage(file);
+    } catch (error) {
+        console.error("Image message send failed:", error);
+        showChatError(error?.message || "Image wasn't sent. Check Supabase Storage and Firestore rules.");
+    }
+});
+
+cancelVoicePreviewButton?.addEventListener("click", () => {
+    const objectUrl = voicePreviewPlayer?.dataset.objectUrl;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    if (voicePreviewPlayer) {
+        voicePreviewPlayer.pause();
+        voicePreviewPlayer.removeAttribute("src");
+        delete voicePreviewPlayer.dataset.objectUrl;
+    }
+    if (voicePreviewPanel) voicePreviewPanel.hidden = true;
+    pendingVoiceMessage = null;
+});
+
+sendVoicePreviewButton?.addEventListener("click", async () => {
+    if (!pendingVoiceMessage) return;
+    sendVoicePreviewButton.disabled = true;
+    try {
+        const pending = pendingVoiceMessage;
+        await sendVoiceMessage(pending.blob, pending.durationSeconds, pending.mimeType, pending.target);
+        const objectUrl = voicePreviewPlayer?.dataset.objectUrl;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        if (voicePreviewPlayer) {
+            voicePreviewPlayer.pause();
+            voicePreviewPlayer.removeAttribute("src");
+            delete voicePreviewPlayer.dataset.objectUrl;
+        }
+        if (voicePreviewPanel) voicePreviewPanel.hidden = true;
+        pendingVoiceMessage = null;
+        hideMessage(chatError);
+    } catch (error) {
+        console.error("Voice message send failed:", error);
+        showChatError(error?.message || "Voice message wasn't sent. Check Supabase Storage and Firestore rules.");
+        sendVoicePreviewButton.disabled = false;
+    }
+});
+
+voiceCancelButton?.addEventListener("click", () => {
+    if (voiceRecorder?.state === "recording") {
+        voiceCancelRequested = true;
+        voiceRecorder.stop();
+    }
+});
+
+$("stop-voice-recording")?.addEventListener("click", () => {
+    if (voiceRecorder?.state === "recording") voiceRecorder.stop();
+});
+
+window.addEventListener("beforeunload", () => {
+    clearInterval(voiceDurationTimer);
+    for (const url of voiceObjectUrls.values()) URL.revokeObjectURL(url);
+    voiceObjectUrls.clear();
+});
+
 function autoResizeMessageInput() {
     if (!messageInput) return;
 
@@ -2596,14 +3476,37 @@ function autoResizeMessageInput() {
         `${Math.min(messageInput.scrollHeight, 140)}px`;
 }
 
-messageInput?.addEventListener("input", autoResizeMessageInput);
+messageInput?.addEventListener("input", () => {
+    autoResizeMessageInput();
+    updateComposerMode();
 
+    const direction = directionForText(messageInput.value);
+    messageInput.dir = direction;
+    messageInput.style.textAlign = direction === "rtl" ? "right" : "left";
+
+    if (typingTimer) clearTimeout(typingTimer);
+
+    setTypingState(Boolean(messageInput.value.trim()));
+
+    if (messageInput.value.trim()) {
+        typingTimer = setTimeout(() => {
+            setTypingState(false);
+        }, 1400);
+    }
+});
+
+
+updateComposerMode();
 
 /* =========================================================
    BACK TO CONVERSATION LIST
 ========================================================= */
 
 backToListButton?.addEventListener("click", () => {
+    setTypingState(false);
+    unsubscribePartnerPresence?.();
+    unsubscribePartnerPresence = null;
+
     setWorkspaceVisible(false);
 
     activeChat.hidden = true;
@@ -2721,7 +3624,11 @@ function beginReply(message) {
         senderId: message.senderId,
         text: message.deletedForEveryone
             ? "This message was deleted."
-            : (message.text || "Message")
+            : message.type === "image"
+                ? "📷 Image"
+                : message.type === "audio"
+                    ? "🎤 Voice message"
+                    : (message.text || "Message")
     };
 
     if (replyPreviewLabel) {

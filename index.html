@@ -70,7 +70,7 @@
                 </span>
                 <button id="settings-toggle" class="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">
                     <span aria-hidden="true">⚙</span>
-                    Settings
+                    <span class="settings-button-label">Settings</span>
                 </button>
             </div>
 
@@ -100,6 +100,7 @@
                         <input id="user-search" type="search" placeholder="Search by display name…" autocomplete="off">
                         <button id="clear-search" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
                     </label>
+                    <button id="find-people-button" class="search-submit" type="button">Find</button>
                     <p id="search-hint" class="tiny-muted">Type a name to find friends.</p>
                     <div id="search-results" class="search-results" aria-live="polite"></div>
                 </section>
@@ -200,7 +201,7 @@
                         </div>
                         <div class="chat-person-info">
                             <h2 id="chat-user-name">Friend</h2>
-                            <p id="chat-subtitle">Private conversation</p>
+                            <p id="chat-subtitle"><span id="chat-presence-status">Private conversation</span></p>
                         </div>
                         <span class="private-badge"><span>●</span> Private chat</span>
                     </header>
@@ -219,21 +220,89 @@
                             </div>
                             <button id="cancel-reply" type="button" aria-label="Cancel reply">×</button>
                         </div>
+
                         <div id="emoji-picker" class="emoji-picker" hidden></div>
+
+                        <!-- Image picker -->
+                        <input
+                            id="image-message-input"
+                            type="file"
+                            accept="image/*"
+                            hidden
+                        >
+
                         <label for="message-input" class="sr-only">Write a message</label>
-                        <button id="emoji-toggle" class="composer-icon-button" type="button" aria-label="Add emoji" title="Add emoji">☺</button>
-                        <textarea id="message-input" rows="1" maxlength="4000" placeholder="Write a message…" autocomplete="off" required></textarea>
+
+                        <!-- Emoji -->
+                        <button
+                            id="emoji-toggle"
+                            class="composer-icon-button"
+                            type="button"
+                            aria-label="Add emoji"
+                            title="Add emoji"
+                        >☺</button>
+
+                        <!-- Select image -->
+                        <button
+                            id="image-message-button"
+                            class="composer-icon-button2"
+                            type="button"
+                            aria-label="Send image"
+                            title="Send image"
+                        >+</button>
+
+                        <!-- Message text -->
+                        <textarea
+                            id="message-input"
+                            dir="auto"
+                            rows="1"
+                            maxlength="4000"
+                            placeholder="Write a message…"
+                            autocomplete="off"
+                        ></textarea>
+
                         <span class="composer-hint">Enter for a new line</span>
-                        <button id="send-message-button" class="send-button" type="submit" aria-label="Send message" title="Send message">
+
+                        <!-- Voice recording -->
+                        <button
+                            id="voice-message-button"
+                            class="send-button voice-message-button"
+                            type="button"
+                            aria-label="Record voice message"
+                            title="Record voice message"
+                        >Voice Msg🎙️</button>
+
+                        <!-- Send text -->
+                        <button
+                            id="send-message-button"
+                            class="send-button"
+                            type="submit"
+                            aria-label="Send message"
+                            title="Send message"
+                            hidden
+                        >
                             <span>Send</span><span aria-hidden="true">↗</span>
                         </button>
                     </form>
+
+                    <!-- Voice recording preview -->
+                    <div id="voice-recording-panel" hidden>
+                        <span id="voice-recording-status" class="voice-recording-status">Recording…</span>
+                        <!-- <button id="cancel-voice-recording" class="chat-block-button" type="button">Cancel</button>
+                        <button id="stop-voice-recording" class="send-button" type="button">Stop</button> -->
+                    </div>
+
+                    <div id="voice-preview-panel" hidden>
+                        <audio id="voice-preview-player" controls></audio>
+                        <button id="cancel-voice-preview" class="chat-block-button" type="button">Cancel</button>
+                        <button id="send-voice-message" class="send-button" type="button">Send ↗</button>
+                    </div>
                 </div>
             </section>
         </section>
 
         <p id="home-error" class="global-error" role="alert" hidden></p>
-        <footer class="page-footer">Friends <span class="footer-four">4</span> ever <span class="footer-separator">/</span> a little closer, every day.</footer>
+        <!-- <footer class="page-footer">Friends <span class="footer-four">4</span> ever <span class="footer-separator">/</span> a little closer, every day.</footer> -->
     </main>
 
     <script type="module" src="./js/main.js"></script>

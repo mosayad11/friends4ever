@@ -10,7 +10,7 @@
     <script>
         try {
             const theme = localStorage.getItem("friends4ever-theme");
-            if (["dark", "light", "ocean", "sunset"].includes(theme)) {
+            if (["dark", "light", "ocean", "sunset", "midnight-purple", "river-breeze", "sunrise-energy"].includes(theme)) {
                 document.documentElement.dataset.theme = theme;
             }
         } catch {
@@ -105,16 +105,53 @@
                     <div id="search-results" class="search-results" aria-live="polite"></div>
                 </section>
 
+                                
                 <section class="settings-section">
                     <div class="section-heading">
                         <h3>Appearance</h3>
                         <span class="section-symbol" aria-hidden="true">◐</span>
                     </div>
+                    
                     <div id="theme-options" class="theme-options" aria-label="Choose a theme">
-                        <button class="theme-option" type="button" data-theme-choice="dark"><span class="theme-swatch theme-swatch-dark"></span>Night</button>
-                        <button class="theme-option" type="button" data-theme-choice="light"><span class="theme-swatch theme-swatch-light"></span>Sky</button>
-                        <button class="theme-option" type="button" data-theme-choice="ocean"><span class="theme-swatch theme-swatch-ocean"></span>Ocean</button>
-                        <button class="theme-option" type="button" data-theme-choice="sunset"><span class="theme-swatch theme-swatch-sunset"></span>Sunset</button>
+
+                        <button class="theme-option" type="button" data-theme-choice="dark">
+                            <span class="theme-swatch theme-swatch-dark"></span>
+                            Night
+                        </button>
+
+                        <button class="theme-option" type="button" data-theme-choice="light">
+                            <span class="theme-swatch theme-swatch-light"></span>
+                            Sky
+                        </button>
+
+                        <button class="theme-option" type="button" data-theme-choice="ocean">
+                            <span class="theme-swatch theme-swatch-ocean"></span>
+                            Ocean
+                        </button>
+
+                        <button class="theme-option" type="button" data-theme-choice="sunset">
+                            <span class="theme-swatch theme-swatch-sunset"></span>
+                            Sunset
+                        </button>
+
+                        <!-- New Theme 5 -->
+                        <button class="theme-option" type="button" data-theme-choice="midnight-purple">
+                            <span class="theme-swatch theme-swatch-midnight-purple"></span>
+                            Midnight Purple
+                        </button>
+
+                        <!-- New Theme 6 -->
+                        <button class="theme-option" type="button" data-theme-choice="river-breeze">
+                            <span class="theme-swatch theme-swatch-river-breeze"></span>
+                            River Breeze
+                        </button>
+
+                        <!-- New Theme 7 -->
+                        <button class="theme-option" type="button" data-theme-choice="sunrise-energy">
+                            <span class="theme-swatch theme-swatch-sunrise-energy"></span>
+                            Sunrise Energy
+                        </button>
+
                     </div>
                 </section>
 
@@ -159,10 +196,26 @@
                 </div>
 
                 <div class="sidebar-section conversations-section">
+
+                    <!-- Notes to Self -->
+                    <button
+                        id="open-self-chat"
+                        class="self-chat-button"
+                        type="button"
+                    >
+                        <span class="self-chat-icon" aria-hidden="true">👤</span>
+                        <span class="self-chat-label">
+                            <strong>( Myself )</strong>
+                            <small>Your private chat</small>
+                        </span>
+                        <span class="self-chat-arrow" aria-hidden="true">↗</span>
+                    </button>
+
                     <div class="section-heading">
                         <h2>Your conversations</h2>
                         <span id="conversation-count" class="count-pill">0</span>
                     </div>
+
                     <p id="conversations-empty" class="empty-note">Your chats will appear here. Find someone above to start a conversation.</p>
                     <div id="conversation-list" class="conversation-list"></div>
                 </div>

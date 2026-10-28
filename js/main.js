@@ -788,20 +788,27 @@ function isSelfChat(chatData = activeChatData) {
 }
 
 function partnerUidFrom(chatData) {
-    const participants = chatData?.participants || [];
+    if (!currentUser || !Array.isArray(chatData?.participants)) {
+        return null;
+    }
+
+    const participants = chatData.participants;
+
+    // Self-chat: the only participant is the current user.
     if (
-        currentUser &&
         participants.length === 1 &&
         participants[0] === currentUser.uid
     ) {
         return currentUser.uid;
     }
-    return participants.find((uid) => uid !== currentUser?.uid) || null;
+
+    // Normal one-to-one conversation.
+    return participants.find(uid => uid !== currentUser.uid) || null;
 }
 
 function profileNameForChat(chatData, uid) {
     if (currentUser && uid === currentUser.uid && (chatData?.participants || []).length === 1) {
-        return "Notes to Self";
+        return "Myself";
     }
     return chatData.participantNames?.[uid] || "Friend";
 }
@@ -899,7 +906,14 @@ const THEME_KEY = "friends4ever-theme";
 function readStoredTheme() {
     try {
         const stored = localStorage.getItem(THEME_KEY);
-        return ["dark", "light", "ocean", "sunset"].includes(stored)
+        return ["dark",
+            "light",
+            "ocean",
+            "sunset",
+            "midnight-purple",
+            "river-breeze",
+            "sunrise-energy"
+        ].includes(stored)
             ? stored
             : "dark";
     } catch {
@@ -916,7 +930,15 @@ function persistTheme(theme) {
 }
 
 function applyTheme(theme) {
-    const supportedThemes = ["dark", "light", "ocean", "sunset"];
+    const supportedThemes = [
+        "dark",
+        "light",
+        "ocean",
+        "sunset",
+        "midnight-purple",
+        "river-breeze",
+        "sunrise-energy"
+    ];
     const selected = supportedThemes.includes(theme) ? theme : "dark";
 
     document.documentElement.dataset.theme = selected;
@@ -948,13 +970,17 @@ function applyTheme(theme) {
     );
 
     if (themeColor) {
-        themeColor.content = selected === "dark"
-            ? "#101827"
-            : selected === "sunset"
-                ? "#2b1723"
-                : selected === "ocean"
-                    ? "#062a3a"
-                    : "#f2f5fc";
+        const themeColors = {
+            dark: "#101827",
+            light: "#f2f5fc",
+            ocean: "#062a3a",
+            sunset: "#2b1723",
+            "midnight-purple": "#21132f",
+            "river-breeze": "#EFFAF5",
+            "sunrise-energy": "#FFFAF1"
+        };
+
+        themeColor.content = themeColors[selected] || "#101827";
     }
 }
 
@@ -1761,39 +1787,113 @@ async function openConversationWith(profile) {
 async function openSelfChat() {
     if (!currentUser) return;
 
-    const chatId = `self__${currentUser.uid}`;
+    const uid = currentUser.uid;
+    const chatId = `self__${uid}`;
     const chatRef = doc(db, "chats", chatId);
 
     try {
-        const existing = await getDoc(chatRef);
-        if (!existing.exists()) {
-            const name = currentProfile?.displayName || "Notes to Self";
-            const photo = currentProfile?.photoURL || currentUser.photoURL || "";
-            await setDoc(chatRef, {
-                participants: [currentUser.uid],
-                participantNames: { [currentUser.uid]: name },
-                participantPhotos: { [currentUser.uid]: photo },
-                unreadCounts: { [currentUser.uid]: 0 },
+        let snapshot = await getDoc(chatRef);
+
+        if (!snapshot.exists()) {
+            const name =
+                currentProfile?.displayName ||
+                currentUser.displayName ||
+                "( Myself )";
+
+            const photo =
+                currentProfile?.photoURL ||
+                currentUser.photoURL ||
+                "";
+
+            const selfChatData = {
+                participants: [uid],
+                participantNames: {
+                    [uid]: name
+                },
+                participantPhotos: {
+                    [uid]: photo
+                },
+                unreadCounts: {
+                    [uid]: 0
+                },
                 lastMessage: "",
                 lastSenderId: "",
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
                 lastMessageAt: serverTimestamp(),
                 requestStatus: "accepted",
-                requestedBy: currentUser.uid,
+                requestedBy: uid,
                 blockedBy: []
+            };
+
+            await setDoc(chatRef, selfChatData);
+            snapshot = await getDoc(chatRef);
+        }
+
+        if (!snapshot.exists()) {
+            throw new Error("Self chat could not be created.");
+        }
+
+        const chatData = snapshot.data();
+
+        if (!(chatData.participants || []).includes(uid)) {
+            throw new Error(
+                "You are not a participant in this self chat."
+            );
+        }
+
+        // Keep the self-chat unread count at zero.
+        if (
+            !chatData.unreadCounts ||
+            chatData.unreadCounts[uid] !== 0
+        ) {
+            await updateDoc(chatRef, {
+                [`unreadCounts.${uid}`]: 0
             });
         }
 
-        const fresh = await getDoc(chatRef);
-        await openExistingConversation(chatId, fresh.data(), {
-            uid: currentUser.uid,
-            displayName: "Notes to Self",
-            photoURL: currentProfile?.photoURL || currentUser.photoURL || ""
-        });
+        await openExistingConversation(
+            chatId,
+            {
+                ...chatData,
+                unreadCounts: {
+                    ...(chatData.unreadCounts || {}),
+                    [uid]: 0
+                },
+                requestStatus: "accepted",
+                blockedBy: []
+            },
+            {
+                uid,
+                displayName: "Myself",
+                photoURL:
+                    currentProfile?.photoURL ||
+                    currentUser.photoURL ||
+                    ""
+            }
+        );
+
+        if (userSearch) userSearch.value = "";
+        if (clearSearchButton) {
+            clearSearchButton.hidden = true;
+        }
+
+        renderSearchState("");
+
+        if (searchHint) {
+            searchHint.textContent =
+                "Type a name to find friends.";
+        }
+
+        hideMessage(chatError);
+        setConnectionState("Connected", true);
+
     } catch (error) {
         console.error("Could not open Notes to Self:", error);
-        showChatError("Could not open Notes to Self. Check Firestore rules.");
+
+        showChatError(
+            "Could not open Myself chat. Check Firestore rules and permissions."
+        );
     }
 }
 
@@ -2298,6 +2398,21 @@ async function openExistingConversation(
                 console.warn("Could not refresh partner profile:", error);
             }
         }
+    }
+
+    const isSelfChat =
+        chatId === `self__${currentUser.uid}` &&
+        Array.isArray(chatData.participants) &&
+        chatData.participants.length === 1 &&
+        chatData.participants[0] === currentUser.uid;
+
+    if (isSelfChat) {
+        partner = {
+            ...partner,
+            uid: currentUser.uid,
+            displayName: "Myself",
+            photoURL: currentProfile?.photoURL || currentUser.photoURL || ""
+        };
     }
 
     activeChatId = chatId;

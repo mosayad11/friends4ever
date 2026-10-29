@@ -3967,3 +3967,175 @@ function focusMessage(messageId) {
         target.classList.remove("message-target-highlight");
     }, 1400);
 }
+
+/* =====================================
+   FRIENDS4EVER PWA INSTALL
+===================================== */
+
+let friends4EverInstallPrompt = null;
+
+const installPopup = document.getElementById("install-app-popup");
+const installPopupInstall = document.getElementById("install-popup-install");
+const installPopupLater = document.getElementById("install-popup-later");
+const installPopupClose = document.getElementById("install-popup-close");
+const installPopupNever = document.getElementById("install-popup-never");
+const settingsInstallApp = document.getElementById("settings-install-app");
+
+const INSTALL_NEVER_KEY = "friends4ever-install-never";
+const INSTALL_LATER_KEY = "friends4ever-install-later";
+
+function isFriends4EverInstalled() {
+    return window.matchMedia("(display-mode: standalone)").matches
+        || window.navigator.standalone === true;
+}
+
+function closeFriends4EverInstallPopup() {
+    if (installPopup) {
+        installPopup.hidden = true;
+    }
+}
+
+function showFriends4EverInstallPopup() {
+    if (!installPopup || isFriends4EverInstalled()) return;
+
+    if (localStorage.getItem(INSTALL_NEVER_KEY) === "true") return;
+
+    // Don't reopen after "Remind me later" during the same tab session.
+    if (sessionStorage.getItem(INSTALL_LATER_KEY) === "true") return;
+
+    installPopup.hidden = false;
+}
+
+function updateFriends4EverInstallUI() {
+    const installed = isFriends4EverInstalled();
+
+    if (settingsInstallApp) {
+        settingsInstallApp.hidden = installed;
+    }
+
+    if (installed) {
+        closeFriends4EverInstallPopup();
+    }
+}
+
+/* Capture the browser's native install prompt when supported. */
+window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    friends4EverInstallPrompt = event;
+
+    updateFriends4EverInstallUI();
+});
+
+/* Browser confirms installation. */
+window.addEventListener("appinstalled", () => {
+    friends4EverInstallPrompt = null;
+
+    closeFriends4EverInstallPopup();
+    updateFriends4EverInstallUI();
+
+    sessionStorage.removeItem(INSTALL_LATER_KEY);
+});
+
+/* Install button in the popup and Settings. */
+async function installFriends4Ever() {
+    if (isFriends4EverInstalled()) {
+        updateFriends4EverInstallUI();
+        return;
+    }
+
+    if (friends4EverInstallPrompt) {
+        friends4EverInstallPrompt.prompt();
+
+        const result = await friends4EverInstallPrompt.userChoice;
+
+        if (result.outcome === "accepted") {
+            closeFriends4EverInstallPopup();
+        }
+
+        friends4EverInstallPrompt = null;
+        return;
+    }
+
+    // Some browsers, especially iOS Safari, don't provide
+    // the native beforeinstallprompt event.
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+    if (isIOS) {
+        alert(
+            'To install Friends4Ever:\n\n' +
+            '1. Tap the Share button in Safari.\n' +
+            '2. Choose "Add to Home Screen".\n' +
+            '3. Tap "Add".'
+        );
+    } else {
+        alert(
+            'Your browser has not made the install prompt available yet. ' +
+            'Try using your browser menu and choose "Install app" or ' +
+            '"Add to Home screen" if that option is available.'
+        );
+    }
+}
+
+installPopupInstall?.addEventListener("click", installFriends4Ever);
+settingsInstallApp?.addEventListener("click", installFriends4Ever);
+
+/* X and Remind me later behave the same way. */
+function remindFriends4EverLater() {
+    sessionStorage.setItem(INSTALL_LATER_KEY, "true");
+    closeFriends4EverInstallPopup();
+}
+
+installPopupLater?.addEventListener("click", remindFriends4EverLater);
+installPopupClose?.addEventListener("click", remindFriends4EverLater);
+
+/* Permanently disable the automatic popup on this browser. */
+installPopupNever?.addEventListener("click", () => {
+    localStorage.setItem(INSTALL_NEVER_KEY, "true");
+    closeFriends4EverInstallPopup();
+});
+
+/* Close when clicking the dark backdrop. */
+installPopup?.addEventListener("click", (event) => {
+    if (event.target === installPopup) {
+        remindFriends4EverLater();
+    }
+});
+
+/* Initial state. */
+updateFriends4EverInstallUI();
+
+if (document.readyState === "loading") {
+    document.addEventListener(
+        "DOMContentLoaded",
+        showFriends4EverInstallPopup,
+        { once: true }
+    );
+} else {
+    showFriends4EverInstallPopup();
+}
+
+/* Update the button when returning to the app. */
+window.addEventListener("pageshow", updateFriends4EverInstallUI);
+window.matchMedia("(display-mode: standalone)").addEventListener(
+    "change",
+    updateFriends4EverInstallUI
+);
+/* Register Friends4Ever PWA Service Worker */
+
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js")
+            .then((registration) => {
+                console.log(
+                    "Friends4Ever Service Worker registered:",
+                    registration.scope
+                );
+            })
+            .catch((error) => {
+                console.error(
+                    "Friends4Ever Service Worker registration failed:",
+                    error
+                );
+            });
+    });
+}

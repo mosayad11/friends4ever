@@ -170,7 +170,7 @@ html[data-theme="river-breeze"] {
     --accent-3: #79B88A;
 
     --input: rgba(255, 255, 255, 0.281);
-    --mine: linear-gradient(135deg, #62BCA7, #69B9D8);
+    --mine: linear-gradient(135deg, #7674eb, #69B9D8);
     --theirs: rgba(101, 180, 166, .14);
 
     --shadow: 0 24px 80px rgba(46, 110, 91, .10);
@@ -203,8 +203,8 @@ html[data-theme="sunrise-energy"] {
     --accent-3: #E98578;
 
     --input: rgba(255, 249, 239, .96);
-    --mine: linear-gradient(135deg, #F2B65F, #F09272);
-    --theirs: rgba(242, 187, 124, .16);
+    --mine: linear-gradient(135deg, #F2B65F, #ffb700);
+    --theirs: rgba(242, 187, 124, 0.37);
 
     --shadow: 0 24px 80px rgba(150, 89, 42, .10);
 }
@@ -2503,7 +2503,184 @@ html[data-theme="sunrise-energy"] .message-row.mine .message-bubble {
         135deg,
         #F2BD59,
         #F09272,
-        #E98578
+        #ff9100
     );
     border-color: #E9AD72;
+}
+
+/* Make the Settings button compact on mobile */
+@media (max-width: 760px) {
+    .settings-button {
+        width: 42px;
+        min-width: 42px;
+        padding: 0;
+        justify-content: center;
+        gap: 0;
+        flex-shrink: 0;
+    }
+
+    .settings-button .settings-button-label {
+        display: none;
+    }
+}
+
+/* =====================================
+   PWA INSTALL POPUP
+===================================== */
+
+.install-popup-overlay[hidden] {
+    display: none !important;
+}
+
+.install-popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(5, 8, 18, .68);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+    animation: installOverlayIn .22s ease;
+}
+
+.install-popup {
+    position: relative;
+    width: 100%;
+    max-width: 390px;
+    padding: 32px 24px 24px;
+    border: 1px solid var(--border-strong);
+    border-radius: 26px;
+    background: var(--panel-solid);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    text-align: center;
+    animation: installPopupIn .28s ease;
+}
+
+.install-popup-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--panel-hover);
+    color: var(--text);
+    font-size: 25px;
+    cursor: pointer;
+}
+
+.install-popup-icon {
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    margin: 0 auto 18px;
+    border-radius: 23px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    font-size: 38px;
+    box-shadow: var(--shadow);
+}
+
+.install-popup h2 {
+    margin: 0 0 12px;
+    color: var(--text);
+    font-size: 24px;
+}
+
+.install-popup p {
+    margin: 0 0 24px;
+    color: var(--muted);
+    line-height: 1.7;
+    font-size: 14px;
+}
+
+.install-primary-button,
+.install-secondary-button,
+.install-never-button {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 11px 16px;
+    border-radius: 13px;
+    font: inherit;
+    cursor: pointer;
+    transition: transform .18s ease, opacity .18s ease;
+}
+
+.install-primary-button:hover,
+.install-secondary-button:hover,
+.install-never-button:hover {
+    transform: translateY(-1px);
+}
+
+.install-primary-button {
+    border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+    font-weight: 700;
+}
+
+.install-secondary-button {
+    margin-top: 9px;
+    border: 1px solid var(--border);
+    background: var(--panel-hover);
+    color: var(--text);
+}
+
+.install-never-button {
+    margin-top: 7px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.install-settings-button {
+    width: 100%;
+    margin-top: 12px;
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel-hover);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.install-settings-button[hidden] {
+    display: none !important;
+}
+
+@keyframes installOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes installPopupIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .install-popup-overlay,
+    .install-popup {
+        animation: none;
+    }
+
+    .install-primary-button,
+    .install-secondary-button,
+    .install-never-button {
+        transition: none;
+    }
 }

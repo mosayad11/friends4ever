@@ -1,0 +1,33 @@
+
+{
+    "id": "./",
+    "name": "Friends 4 Ever",
+    "short_name": "Friends 4ever",
+    "description": "Stay connected with your friends.",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#101827",
+    "theme_color": "#101827",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "./images/icons/logo.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "./images/icons/logo.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "./images/icons/logo.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

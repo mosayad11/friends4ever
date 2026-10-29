@@ -1,11 +1,12 @@
 
-const CACHE_NAME = "friends4ever-shell-v1";
+const CACHE_NAME = "friends4ever-shell-v2";
 
 const APP_FILES = [
     "./",
     "./index.html",
     "./login.html",
     "./setup-profile.html",
+    "./publisher.html",
 
     // CSS
     "./css/style.css",

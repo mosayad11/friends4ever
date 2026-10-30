@@ -3016,3 +3016,12 @@ html[data-theme="sunrise-energy"] .message-row.mine .message-bubble {
         padding-bottom: 4px;
     }
 }
+
+.message-bubble {
+    width: fit-content;
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-break: normal;
+    overflow-wrap: break-word;
+    min-width: 0;
+}

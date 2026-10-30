@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "friends4ever-shell-v5";
+const CACHE_NAME = "friends4ever-shell-v4";
 
 const APP_FILES = [
     "./",

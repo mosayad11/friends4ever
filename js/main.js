@@ -1350,91 +1350,39 @@ async function markChatAsRead(chatId) {
     try {
         const chatRef = doc(db, "chats", chatId);
 
-        const result = await runTransaction(
-            db,
-            async (transaction) => {
-                const snapshot = await transaction.get(chatRef);
+        await updateDoc(chatRef, {
+            [`unreadCounts.${currentUser.uid}`]: 0,
+            updatedAt: serverTimestamp()
+        });
 
-                if (!snapshot.exists()) return null;
-
-                const data = snapshot.data();
-
-                if (!(data.participants || []).includes(currentUser.uid)) {
-                    return null;
-                }
-
-                const oldCounts = data.unreadCounts || {};
-
-                const otherUid = (data.participants || [])
-                    .find((uid) => uid !== currentUser.uid);
-
-                const hasOwnCount = Object.prototype
-                    .hasOwnProperty.call(oldCounts, currentUser.uid);
-
-                const hasOtherCount = otherUid
-                    ? Object.prototype.hasOwnProperty.call(
-                        oldCounts,
-                        otherUid
-                    )
-                    : true;
-
-                if (
-                    oldCounts[currentUser.uid] === 0 &&
-                    hasOwnCount &&
-                    hasOtherCount
-                ) {
-                    return null;
-                }
-
-                const unreadCounts = {
-                    ...oldCounts,
+        // Update local active chat data
+        if (activeChatId === chatId) {
+            activeChatData = {
+                ...activeChatData,
+                unreadCounts: {
+                    ...(activeChatData?.unreadCounts || {}),
                     [currentUser.uid]: 0
-                };
-
-                if (
-                    otherUid &&
-                    !Number.isFinite(unreadCounts[otherUid])
-                ) {
-                    unreadCounts[otherUid] = 0;
                 }
+            };
+        }
 
-                if (
-                    oldCounts[currentUser.uid] !== 0 ||
-                    !hasOwnCount ||
-                    !hasOtherCount
-                ) {
-                    transaction.update(chatRef, {
-                    unreadCounts,
-                    updatedAt: serverTimestamp()
-                });
-                    return unreadCounts;
-                }
-
-                return null;
-            }
+        // Update local conversation record
+        const record = chatRecords.find(
+            (item) => item.id === chatId
         );
 
-        if (result) {
-            if (activeChatId === chatId) {
-                activeChatData = {
-                    ...activeChatData,
-                    unreadCounts: result
-                };
-            }
-
-            const record = chatRecords.find(
-                (item) => item.id === chatId
-            );
-
-            if (record) {
-                record.data = {
-                    ...record.data,
-                    unreadCounts: result
-                };
-            }
-
-            renderConversationList();
+        if (record) {
+            record.data = {
+                ...record.data,
+                unreadCounts: {
+                    ...(record.data.unreadCounts || {}),
+                    [currentUser.uid]: 0
+                }
+            };
         }
+
+        renderConversationList();
+
     } catch (error) {
         console.warn(
             "Could not mark conversation as read:",
@@ -2448,7 +2396,7 @@ async function openExistingConversation(
         setComposerEnabled(true);
         void markChatAsRead(chatId);
         subscribeToMessages(chatId);
-        
+
         if (window.matchMedia("(min-width: 761px)").matches) {
             messageInput?.focus();
         }

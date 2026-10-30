@@ -2037,16 +2037,12 @@ body.auth-page .auth-shell {
 }
 
 .profile-count {
-    position: absolute;
-    top: 50%;
-    left: 50%;
     display: inline-flex;
     align-items: baseline;
     gap: 6px;
     color: var(--muted);
     font-size: .75rem;
     pointer-events: none;
-    transform: translate(-50%, -50%);
 }
 
 .profile-count span:first-child {

@@ -4043,6 +4043,7 @@ async function installFriends4Ever() {
         return;
     }
 
+    // Native installation prompt is available.
     if (friends4EverInstallPrompt) {
         friends4EverInstallPrompt.prompt();
 
@@ -4056,24 +4057,42 @@ async function installFriends4Ever() {
         return;
     }
 
-    // Some browsers, especially iOS Safari, don't provide
-    // the native beforeinstallprompt event.
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const userAgent = navigator.userAgent.toLowerCase();
 
+    const isIOS = /iphone|ipad|ipod/.test(userAgent);
+
+    const isSafari = isIOS ||
+        (/safari/.test(userAgent) &&
+         !/chrome|chromium|crios|edg|android/.test(userAgent));
+
+    // iPhone / iPad instructions.
     if (isIOS) {
         alert(
-            'To install Friends4Ever:\n\n' +
-            '1. Tap the Share button in Safari.\n' +
-            '2. Choose "Add to Home Screen".\n' +
-            '3. Tap "Add".'
+            "To install Friends 4 Ever:\n\n" +
+            "1. Open this website in Safari.\n" +
+            "2. Tap the Share button.\n" +
+            '3. Choose "Add to Home Screen".\n' +
+            '4. Tap "Add".'
         );
-    } else {
-        alert(
-            'Your browser has not made the install prompt available yet. ' +
-            'Try using your browser menu and choose "Install app" or ' +
-            '"Add to Home screen" if that option is available.'
-        );
+        return;
     }
+
+    // Safari on macOS.
+    if (isSafari) {
+        alert(
+            'To install Friends 4 Ever:\n\n' +
+            '1. Open the Safari menu.\n' +
+            '2. Choose "Add to Dock" if available.'
+        );
+        return;
+    }
+
+    // Other browsers: don't show a misleading warning.
+    alert(
+        "Friends 4 Ever can be installed from your browser menu.\n\n" +
+        "Open the browser menu and look for:\n" +
+        '"Install app" or "Add to Home screen".'
+    );
 }
 
 installPopupInstall?.addEventListener("click", installFriends4Ever);

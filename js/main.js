@@ -3974,20 +3974,43 @@ function focusMessage(messageId) {
 
 let friends4EverInstallPrompt = null;
 
-const installPopup = document.getElementById("install-app-popup");
-const installPopupInstall = document.getElementById("install-popup-install");
-const installPopupLater = document.getElementById("install-popup-later");
-const installPopupClose = document.getElementById("install-popup-close");
-const installPopupNever = document.getElementById("install-popup-never");
-const settingsInstallApp = document.getElementById("settings-install-app");
+const installPopup =
+    document.getElementById("install-app-popup");
+
+const installPopupInstall =
+    document.getElementById("install-popup-install");
+
+const installPopupLater =
+    document.getElementById("install-popup-later");
+
+const installPopupClose =
+    document.getElementById("install-popup-close");
+
+const installPopupNever =
+    document.getElementById("install-popup-never");
+
+const settingsInstallApp =
+    document.getElementById("settings-install-app");
 
 const INSTALL_NEVER_KEY = "friends4ever-install-never";
 const INSTALL_LATER_KEY = "friends4ever-install-later";
 
+
+/* =====================================
+   CHECK INSTALL STATE
+===================================== */
+
 function isFriends4EverInstalled() {
-    return window.matchMedia("(display-mode: standalone)").matches
-        || window.navigator.standalone === true;
+    return (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true
+    );
 }
+
+
+/* =====================================
+   POPUP CONTROLS
+===================================== */
 
 function closeFriends4EverInstallPopup() {
     if (installPopup) {
@@ -3996,21 +4019,38 @@ function closeFriends4EverInstallPopup() {
 }
 
 function showFriends4EverInstallPopup() {
-    if (!installPopup || isFriends4EverInstalled()) return;
 
-    if (localStorage.getItem(INSTALL_NEVER_KEY) === "true") return;
+    if (!installPopup) return;
 
-    // Don't reopen after "Remind me later" during the same tab session.
-    if (sessionStorage.getItem(INSTALL_LATER_KEY) === "true") return;
+    if (isFriends4EverInstalled()) return;
+
+    if (!friends4EverInstallPrompt) return;
+
+    if (localStorage.getItem(INSTALL_NEVER_KEY) === "true") {
+        return;
+    }
+
+    if (sessionStorage.getItem(INSTALL_LATER_KEY) === "true") {
+        return;
+    }
 
     installPopup.hidden = false;
 }
 
+
+/* =====================================
+   UPDATE INSTALL UI
+===================================== */
+
 function updateFriends4EverInstallUI() {
+
     const installed = isFriends4EverInstalled();
 
+    const canInstall =
+        !!friends4EverInstallPrompt && !installed;
+
     if (settingsInstallApp) {
-        settingsInstallApp.hidden = installed;
+        settingsInstallApp.hidden = !canInstall;
     }
 
     if (installed) {
@@ -4018,143 +4058,202 @@ function updateFriends4EverInstallUI() {
     }
 }
 
-/* Capture the browser's native install prompt when supported. */
-window.addEventListener("beforeinstallprompt", (event) => {
+
+/* =====================================
+   BROWSER INSTALL PROMPT
+===================================== */
+
+window.addEventListener("beforeinstallprompt", event => {
+
+    // Prevent the browser's automatic mini prompt.
     event.preventDefault();
+
+    // Save the native installation event.
     friends4EverInstallPrompt = event;
 
-    updateFriends4EverInstallUI();
-});
+    console.log("[PWA] Install prompt is available.");
 
-/* Browser confirms installation. */
-window.addEventListener("appinstalled", () => {
-    friends4EverInstallPrompt = null;
-
-    closeFriends4EverInstallPopup();
     updateFriends4EverInstallUI();
 
-    sessionStorage.removeItem(INSTALL_LATER_KEY);
+    // Show the popup only when installation is available.
+    showFriends4EverInstallPopup();
+
 });
 
-/* Install button in the popup and Settings. */
+
+/* =====================================
+   INSTALL APP
+===================================== */
+
 async function installFriends4Ever() {
+
     if (isFriends4EverInstalled()) {
         updateFriends4EverInstallUI();
         return;
     }
 
-    // Native installation prompt is available.
-    if (friends4EverInstallPrompt) {
-        friends4EverInstallPrompt.prompt();
+    if (!friends4EverInstallPrompt) {
+        console.log("[PWA] Native install prompt is unavailable.");
+        return;
+    }
 
-        const result = await friends4EverInstallPrompt.userChoice;
+    const installEvent = friends4EverInstallPrompt;
+
+    // The prompt can only be used once.
+    friends4EverInstallPrompt = null;
+
+    closeFriends4EverInstallPopup();
+    updateFriends4EverInstallUI();
+
+    try {
+
+        await installEvent.prompt();
+
+        const result = await installEvent.userChoice;
+
+        console.log(
+            "[PWA] Install result:",
+            result.outcome
+        );
 
         if (result.outcome === "accepted") {
-            closeFriends4EverInstallPopup();
+            console.log("[PWA] User accepted installation.");
+        } else {
+            console.log("[PWA] User dismissed installation.");
         }
 
-        friends4EverInstallPrompt = null;
-        return;
-    }
+    } catch (error) {
 
-    const userAgent = navigator.userAgent.toLowerCase();
-
-    const isIOS = /iphone|ipad|ipod/.test(userAgent);
-
-    const isSafari = isIOS ||
-        (/safari/.test(userAgent) &&
-         !/chrome|chromium|crios|edg|android/.test(userAgent));
-
-    // iPhone / iPad instructions.
-    if (isIOS) {
-        alert(
-            "To install Friends 4 Ever:\n\n" +
-            "1. Open this website in Safari.\n" +
-            "2. Tap the Share button.\n" +
-            '3. Choose "Add to Home Screen".\n' +
-            '4. Tap "Add".'
+        console.error(
+            "[PWA] Installation failed:",
+            error
         );
-        return;
+
     }
 
-    // Safari on macOS.
-    if (isSafari) {
-        alert(
-            'To install Friends 4 Ever:\n\n' +
-            '1. Open the Safari menu.\n' +
-            '2. Choose "Add to Dock" if available.'
-        );
-        return;
-    }
-
-    // Other browsers: don't show a misleading warning.
-    alert(
-        "Friends 4 Ever can be installed from your browser menu.\n\n" +
-        "Open the browser menu and look for:\n" +
-        '"Install app" or "Add to Home screen".'
-    );
+    updateFriends4EverInstallUI();
 }
 
-installPopupInstall?.addEventListener("click", installFriends4Ever);
-settingsInstallApp?.addEventListener("click", installFriends4Ever);
 
-/* X and Remind me later behave the same way. */
-function remindFriends4EverLater() {
-    sessionStorage.setItem(INSTALL_LATER_KEY, "true");
+/* =====================================
+   INSTALL BUTTONS
+===================================== */
+
+installPopupInstall?.addEventListener(
+    "click",
+    installFriends4Ever
+);
+
+settingsInstallApp?.addEventListener(
+    "click",
+    installFriends4Ever
+);
+
+
+/* =====================================
+   APP INSTALLED
+===================================== */
+
+window.addEventListener("appinstalled", () => {
+
+    console.log("[PWA] Friends4Ever installed.");
+
+    friends4EverInstallPrompt = null;
+
     closeFriends4EverInstallPopup();
-}
 
-installPopupLater?.addEventListener("click", remindFriends4EverLater);
-installPopupClose?.addEventListener("click", remindFriends4EverLater);
+    sessionStorage.removeItem(INSTALL_LATER_KEY);
 
-/* Permanently disable the automatic popup on this browser. */
-installPopupNever?.addEventListener("click", () => {
-    localStorage.setItem(INSTALL_NEVER_KEY, "true");
-    closeFriends4EverInstallPopup();
+    updateFriends4EverInstallUI();
+
 });
 
-/* Close when clicking the dark backdrop. */
-installPopup?.addEventListener("click", (event) => {
+
+/* =====================================
+   REMIND ME LATER
+===================================== */
+
+function remindFriends4EverLater() {
+
+    sessionStorage.setItem(
+        INSTALL_LATER_KEY,
+        "true"
+    );
+
+    closeFriends4EverInstallPopup();
+
+}
+
+installPopupLater?.addEventListener(
+    "click",
+    remindFriends4EverLater
+);
+
+installPopupClose?.addEventListener(
+    "click",
+    remindFriends4EverLater
+);
+
+
+/* =====================================
+   NEVER SHOW AUTOMATIC POPUP
+===================================== */
+
+installPopupNever?.addEventListener("click", () => {
+
+    localStorage.setItem(
+        INSTALL_NEVER_KEY,
+        "true"
+    );
+
+    closeFriends4EverInstallPopup();
+
+});
+
+
+/* =====================================
+   CLOSE ON BACKDROP CLICK
+===================================== */
+
+installPopup?.addEventListener("click", event => {
+
     if (event.target === installPopup) {
         remindFriends4EverLater();
     }
+
 });
 
-/* Initial state. */
+
+/* =====================================
+   INITIAL STATE
+===================================== */
+
 updateFriends4EverInstallUI();
 
-if (document.readyState === "loading") {
-    document.addEventListener(
-        "DOMContentLoaded",
-        showFriends4EverInstallPopup,
-        { once: true }
-    );
-} else {
-    showFriends4EverInstallPopup();
-}
 
-/* Update the button when returning to the app. */
-window.addEventListener("pageshow", updateFriends4EverInstallUI);
-window.matchMedia("(display-mode: standalone)").addEventListener(
-    "change",
+/* =====================================
+   UPDATE WHEN RETURNING TO APP
+===================================== */
+
+window.addEventListener(
+    "pageshow",
     updateFriends4EverInstallUI
 );
-/* Register Friends4Ever PWA Service Worker */
 
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js")
-            .then((registration) => {
-                console.log(
-                    "Friends4Ever Service Worker registered:",
-                    registration.scope
-                );
-            })
-            .catch((error) => {
-                console.error(
-                    "Friends4Ever Service Worker registration failed:",
-                    error
-                );
-            });
-    });
+const displayModeQuery =
+    window.matchMedia("(display-mode: standalone)");
+
+if (displayModeQuery.addEventListener) {
+
+    displayModeQuery.addEventListener(
+        "change",
+        updateFriends4EverInstallUI
+    );
+
+} else {
+
+    displayModeQuery.addListener(
+        updateFriends4EverInstallUI
+    );
+
 }

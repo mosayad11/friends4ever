@@ -2448,7 +2448,10 @@ async function openExistingConversation(
         setComposerEnabled(true);
         void markChatAsRead(chatId);
         subscribeToMessages(chatId);
-        messageInput?.focus();
+        
+        if (window.matchMedia("(min-width: 761px)").matches) {
+            messageInput?.focus();
+        }
     } else {
         setComposerEnabled(false);
 

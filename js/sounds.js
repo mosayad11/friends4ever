@@ -39,7 +39,7 @@ export function enableInterfaceSounds(root = document) {
             return;
         }
 
-        playSound("hover");
+        // playSound("hover");
     });
 
     root.addEventListener("click", (event) => {

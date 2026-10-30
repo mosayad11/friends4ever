@@ -2680,3 +2680,339 @@ html[data-theme="sunrise-energy"] .message-row.mine .message-bubble {
         transition: none;
     }
 }
+
+/* =========================================================
+   FRIENDS4EVER — MOBILE FIXED LAYOUT
+   Mobile only. Desktop remains unchanged.
+========================================================= */
+
+@media (max-width: 760px) {
+
+    /* Lock the app to the visible mobile screen */
+    html,
+    body {
+        width: 100%;
+        height: 100%;
+        min-height: 100%;
+        margin: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+    }
+
+    /* App becomes a fixed-height vertical layout */
+    .app-shell {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 620px;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        margin: 0 auto;
+        padding: 10px 10px 0;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    /* Main logo/settings header stays at the top */
+    .topbar {
+        position: relative;
+        z-index: 20;
+        flex: 0 0 auto;
+        width: 100%;
+        margin: 0 0 10px;
+        padding: 2px 0;
+        background: transparent;
+    }
+
+    /* Workspace uses all remaining screen space */
+    .workspace {
+        display: block;
+        flex: 1 1 0;
+        width: 100%;
+        height: 0;
+        min-height: 0;
+        max-height: none;
+        margin: 0;
+        overflow: hidden;
+    }
+
+    /* Contacts/conversations screen */
+    .sidebar {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        max-height: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Chat screen */
+    .chat-panel {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        max-height: 100%;
+        overflow: hidden;
+    }
+
+    /* Show only the selected screen */
+    .workspace.chat-open .sidebar {
+        display: none;
+    }
+
+    .workspace:not(.chat-open) .chat-panel {
+        display: none;
+    }
+
+    .workspace.chat-open {
+        display: block;
+        height: 0;
+        min-height: 0;
+        max-height: none;
+        margin: 0;
+        overflow: hidden;
+    }
+
+    .workspace.chat-open .chat-panel {
+        display: flex;
+        height: 100%;
+        min-height: 0;
+        max-height: 100%;
+    }
+
+    /* Chat content: header, messages, composer */
+    .active-chat {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    /* Person header stays directly under the app header */
+    .chat-header {
+        position: relative;
+        z-index: 10;
+        flex: 0 0 auto;
+        min-height: 68px;
+        padding: 10px 9px;
+        background: var(--panel-solid);
+        border-bottom: 1px solid var(--border);
+    }
+
+    /* Messages occupy the available space and scroll */
+    .messages-list {
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        height: 0;
+        padding: 14px 10px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .messages-list::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Composer always stays below messages */
+    .message-composer {
+        position: relative;
+        z-index: 15;
+        flex: 0 0 auto;
+        width: auto;
+        margin: 0 3px;
+        margin-bottom: max(5px, env(safe-area-inset-bottom));
+        padding: 7px 8px 7px 10px;
+        background: var(--panel-solid);
+    }
+
+    /* Keep errors from pushing the composer off screen */
+    .chat-error {
+        flex: 0 0 auto;
+        max-height: 65px;
+        overflow-y: auto;
+    }
+
+    /* Hide footer while using the mobile app screen */
+    .workspace ~ .page-footer {
+        display: none;
+    }
+
+    /* Remove old fixed minimum heights */
+    .sidebar,
+    .chat-panel,
+    .chat-placeholder {
+        min-height: 0;
+    }
+
+    .chat-placeholder {
+        height: 100%;
+        overflow-y: auto;
+    }
+}
+
+/* Small-screen keyboard/layout adjustments */
+@media (max-width: 390px) {
+    .app-shell {
+        padding-right: 7px;
+        padding-left: 7px;
+    }
+
+    .chat-header {
+        gap: 7px;
+        padding-right: 7px;
+        padding-left: 7px;
+    }
+
+    .messages-list {
+        padding-right: 8px;
+        padding-left: 8px;
+    }
+}
+
+/* =========================================================
+   MOBILE — COMPACT HEADERS
+   Keep every element, reduce vertical space only.
+========================================================= */
+
+@media (max-width: 760px) {
+
+    /* Main header: logo + settings */
+    .topbar {
+        min-height: 0;
+        margin-bottom: 5px;
+        padding-top: 0;
+        padding-bottom: 0;
+        gap: 5px;
+    }
+
+    .brand {
+        font-size: 1.15rem;
+        line-height: 1;
+        gap: 3px;
+    }
+
+    .brand-four {
+        width: 23px;
+        height: 25px;
+        border-radius: 7px;
+    }
+
+    .topbar-actions {
+        gap: 5px;
+    }
+
+    .settings-button {
+        width: 34px;
+        min-width: 34px;
+        min-height: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 10px;
+    }
+
+    .settings-button > span:first-child {
+        font-size: 1rem;
+    }
+
+    .icon-button {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        border-radius: 9px;
+    }
+
+    .logout-button {
+        padding: 7px 9px;
+        font-size: .7rem;
+    }
+
+    /* Chat header: person info + block button */
+    .chat-header {
+        min-height: 54px;
+        height: auto;
+        padding: 6px 8px;
+        gap: 7px;
+    }
+
+    .chat-person-avatar {
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        border-radius: 10px;
+    }
+
+    .chat-header .icon-button,
+    .chat-header button {
+        min-height: 30px;
+    }
+
+    .mobile-back {
+        width: 30px;
+        height: 30px;
+    }
+
+    .chat-person-info {
+        min-width: 0;
+        gap: 1px;
+    }
+
+    .chat-person-info h3,
+    .chat-person-info h4 {
+        margin-top: 0;
+        margin-bottom: 0;
+        line-height: 1.2;
+    }
+}
+
+@media (max-width: 390px) {
+
+    .topbar {
+        gap: 3px;
+    }
+
+    .brand {
+        font-size: 1.05rem;
+    }
+
+    .chat-header {
+        min-height: 50px;
+        padding: 5px 6px;
+        gap: 5px;
+    }
+
+    .chat-person-avatar {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+    }
+}
+@media (max-width: 760px) {
+    .message-composer {
+        padding-top: 5px;
+        padding-bottom: 5px;
+        margin-bottom: max(4px, env(safe-area-inset-bottom));
+    }
+}
+
+@media (max-width: 390px) {
+    .message-composer {
+        padding-top: 4px;
+        padding-bottom: 4px;
+    }
+}
